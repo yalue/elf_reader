@@ -324,6 +324,81 @@ func (s *ELF32Symbol) String() string {
 		s.Size, s.Info, s.Value, s.SectionIndex)
 }
 
+// Represents the 32-bit info field in a relocation
+type ELF32RelocationInfo uint32
+
+// Returns the 8-bit relocation type in the 32-bit ELF relocation info field.
+func (n ELF32RelocationInfo) Type() uint8 {
+	return uint8(n)
+}
+
+// Returns the 24-bit symbol index.
+func (n ELF32RelocationInfo) SymbolIndex() uint32 {
+	return uint32(n >> 8)
+}
+
+func (n ELF32RelocationInfo) String() string {
+	return fmt.Sprintf("type %d, symbol index %d", n.Type(), n.SymbolIndex())
+}
+
+type ELF32Relocation interface {
+	// Returns the address of the relocation
+	Offset() uint32
+	// Returns the info field for the relocation
+	Info() ELF32RelocationInfo
+	// Returns the addent field for the relocation, or 0 if the relocation
+	// did not include an addend.
+	Addend() int32
+	String() string
+}
+
+// A relocation without an addend. Satisfies the ELF32Relocation interface.
+type ELF32Rel struct {
+	Address        uint32
+	RelocationInfo ELF32RelocationInfo
+}
+
+func (e *ELF32Rel) Offset() uint32 {
+	return e.Address
+}
+
+func (e *ELF32Rel) Info() ELF32RelocationInfo {
+	return e.RelocationInfo
+}
+
+func (e *ELF32Rel) Addend() int32 {
+	return 0
+}
+
+func (e *ELF32Rel) String() string {
+	return fmt.Sprintf("relocation at address 0x%08x, %s", e.Address,
+		e.RelocationInfo)
+}
+
+// A relocation with an addend. Also satisfies the ELF32Relocation interface.
+type ELF32Rela struct {
+	Address        uint32
+	RelocationInfo ELF32RelocationInfo
+	AddendValue    int32
+}
+
+func (e *ELF32Rela) Offset() uint32 {
+	return e.Address
+}
+
+func (e *ELF32Rela) Info() ELF32RelocationInfo {
+	return e.RelocationInfo
+}
+
+func (e *ELF32Rela) Addend() int32 {
+	return e.AddendValue
+}
+
+func (e *ELF32Rela) String() string {
+	return fmt.Sprintf("relocation at address 0x%08x with addend %d, %s",
+		e.Address, e.AddendValue, e.RelocationInfo)
+}
+
 // Tracks parsed data for a 32-bit ELF.
 type ELF32File struct {
 	Header   ELF32Header
@@ -451,8 +526,64 @@ func (f *ELF32File) GetStringTable(sectionIndex uint16) ([]string, error) {
 	return strings.Split(string(content[:len(content)-1]), "\x00"), nil
 }
 
-// TODO (next): Test dumping symbols. Parse relocations next, followed by
-// dynamic linking tables. Still keep track of string references!
+// Returns true if the given index is a relocation table.
+func (f *ELF32File) IsRelocationTable(sectionIndex uint16) bool {
+	if int(sectionIndex) > len(f.Sections) {
+		return false
+	}
+	switch f.Sections[sectionIndex].Type {
+	case RelaSection, RelSection:
+		return true
+	}
+	return false
+}
+
+// If the given section is a relocation table (type .rel or .rela), this will
+// parse and return the relocations.
+func (f *ELF32File) GetRelocationTable(sectionIndex uint16) ([]ELF32Relocation,
+	error) {
+	if !f.IsRelocationTable(sectionIndex) {
+		return nil, fmt.Errorf("Section %d is not a relocation table",
+			sectionIndex)
+	}
+	header := &(f.Sections[sectionIndex])
+	content, e := f.GetSectionContent(sectionIndex)
+	if e != nil {
+		return nil, fmt.Errorf("Failed reading relocation table: %s", e)
+	}
+	data := bytes.NewReader(content)
+	if header.Type == RelaSection {
+		entryCount := int(header.Size) / binary.Size(&ELF32Rela{})
+		// Supposedly slices of structs satisfying an interface can't be
+		// returned as a slice of the interface? That's why we need to convert
+		// to a slice of pointers which do satisfy the interface.
+		toReturnData := make([]ELF32Rela, entryCount)
+		e = binary.Read(data, binary.LittleEndian, toReturnData)
+		if e != nil {
+			return nil, fmt.Errorf("Failed parsing rela table: %s", e)
+		}
+		toReturn := make([]ELF32Relocation, entryCount)
+		for i := range toReturnData {
+			toReturn[i] = &(toReturnData[i])
+		}
+		return toReturn, nil
+	}
+	// We're assuming this is a .rel section, since it wasn't .rela
+	entryCount := int(header.Size) / binary.Size(&ELF32Rel{})
+	toReturnData := make([]ELF32Rel, entryCount)
+	e = binary.Read(data, binary.LittleEndian, toReturnData)
+	if e != nil {
+		return nil, fmt.Errorf("Failed parsing rel table: %s", e)
+	}
+	toReturn := make([]ELF32Relocation, entryCount)
+	for i := range toReturnData {
+		toReturn[i] = &(toReturnData[i])
+	}
+	return toReturn, nil
+}
+
+// TODO (next): Parse dynamic linking tables, followed by OS-specific .gnu*
+// sections. Still keep track of string references!
 
 // Used during initialization to fill in the Segments slice.
 func (f *ELF32File) parseProgramHeaders() error {

@@ -80,9 +80,31 @@ func printStrings(f *elf_reader.ELF32File) error {
 	return nil
 }
 
+func printRelocations(f *elf_reader.ELF32File) error {
+	for i := range f.Sections {
+		if !f.IsRelocationTable(uint16(i)) {
+			continue
+		}
+		name, e := f.GetSectionName(uint16(i))
+		if e != nil {
+			return fmt.Errorf("Error getting relocation table name: %s", e)
+		}
+		relocations, e := f.GetRelocationTable(uint16(i))
+		if e != nil {
+			return fmt.Errorf("Couldn't read relocation table: %s", e)
+		}
+		log.Printf("%d relocations in section %s:\n", len(relocations), name)
+		for j, r := range relocations {
+			log.Printf("  %d. %s\n", j, r)
+		}
+	}
+	return nil
+}
+
 func run() int {
 	var inputFile string
-	var showSections, showSegments, showSymbols, showStrings bool
+	var showSections, showSegments, showSymbols, showStrings,
+		showRelocations bool
 	flag.StringVar(&inputFile, "file", "",
 		"The path to the input ELF file. This is required.")
 	flag.BoolVar(&showSections, "show_sections", false,
@@ -93,6 +115,8 @@ func run() int {
 		"Print a list of symbols if set.")
 	flag.BoolVar(&showStrings, "show_strings", false,
 		"Prints the contents of the string tables if set.")
+	flag.BoolVar(&showRelocations, "show_relocations", false,
+		"Prints a list of relocations if set.")
 	flag.Parse()
 	if inputFile == "" {
 		log.Printf("Invalid arguments. Run with -help for more information.")
@@ -138,6 +162,14 @@ func run() int {
 		e = printStrings(elf)
 		if e != nil {
 			log.Printf("Error printing strings: %s\n", e)
+			return 1
+		}
+	}
+	if showRelocations {
+		log.Println("==== Relocations ====")
+		e = printRelocations(elf)
+		if e != nil {
+			log.Printf("Error printing relocations: %s\n", e)
 			return 1
 		}
 	}
