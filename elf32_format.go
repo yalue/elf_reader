@@ -101,14 +101,15 @@ func (ht ProgramHeaderType) String() string {
 		return "reserved segment type"
 	case ProgramHeaderSegment:
 		return "program header table"
+	case 0x6474e551:
+		return "stack executability (GNU)"
+	case 0x6474e552:
+		return "read-only after relocation (GNU)"
 	}
-	if t >= 0x80000000 {
-		return fmt.Sprintf("invalid segment type: 0x%x", t)
-	}
-	if t >= 0x70000000 {
+	if (t >= 0x70000000) && (t < 0x80000000) {
 		return fmt.Sprintf("processor-specific segment: 0x%x", t)
 	}
-	if t >= 0x60000000 {
+	if (t >= 0x60000000) && (t < 0x70000000) {
 		return fmt.Sprintf("OS-specific segment: 0x%x", t)
 	}
 	return fmt.Sprintf("invalid segment type 0x%x", t)
@@ -528,7 +529,7 @@ func (f *ELF32File) GetStringTable(sectionIndex uint16) ([]string, error) {
 
 // Returns true if the given index is a relocation table.
 func (f *ELF32File) IsRelocationTable(sectionIndex uint16) bool {
-	if int(sectionIndex) > len(f.Sections) {
+	if int(sectionIndex) >= len(f.Sections) {
 		return false
 	}
 	switch f.Sections[sectionIndex].Type {
@@ -578,6 +579,132 @@ func (f *ELF32File) GetRelocationTable(sectionIndex uint16) ([]ELF32Relocation,
 	toReturn := make([]ELF32Relocation, entryCount)
 	for i := range toReturnData {
 		toReturn[i] = &(toReturnData[i])
+	}
+	return toReturn, nil
+}
+
+// A constant value indicating the type of an entry in the dynamic table.
+type ELF32DynamicTag uint32
+
+func (t ELF32DynamicTag) String() string {
+	switch t {
+	case 0:
+		return "end of dynamic array"
+	case 1:
+		return "needed library name"
+	case 2:
+		return "PLT relocations size"
+	case 3:
+		return "PLT global offset table"
+	case 4:
+		return "symbol hash table address"
+	case 5:
+		return "string table address"
+	case 6:
+		return "symbol table address"
+	case 7:
+		return "relocation (rela) table address"
+	case 8:
+		return "relocation (rela) table size"
+	case 9:
+		return "relocation (rela) entry size"
+	case 10:
+		return "string table size"
+	case 11:
+		return "symbol table entry size"
+	case 12:
+		return "initialization function address"
+	case 13:
+		return "termination function address"
+	case 14:
+		return "shared object name"
+	case 15:
+		return "library search path"
+	case 16:
+		return "use alternate symbol resolution algorithm"
+	case 17:
+		return "relocation (rel) table address"
+	case 18:
+		return "relocation (rel) table size"
+	case 19:
+		return "relocation (rel) entry size"
+	case 20:
+		return "PLT relocation type"
+	case 21:
+		return "debug value"
+	case 22:
+		return "no read-only relocations allowed"
+	case 23:
+		return "PLT relocations address"
+	case 24:
+		return "process relocations now"
+	case 25:
+		return "initialization function array address"
+	case 26:
+		return "termination function array address"
+	case 27:
+		return "initialization function array size"
+	case 28:
+		return "termination function array size"
+	case 0x6ffffef5:
+		return "GNU hash table address"
+	case 0x6ffffff0:
+		return "version symbol table address"
+	case 0x6ffffffe:
+		return "version dependency table address"
+	case 0x6fffffff:
+		return "number of version dependency table entries"
+	}
+	v := uint32(t)
+	if (v < 0x70000000) && (v >= 0x60000000) {
+		return fmt.Sprintf("OS-specific dynamic entry 0x%08x", v)
+	}
+	if (v < 0x80000000) && (v >= 0x70000000) {
+		return fmt.Sprintf("processor-specific dynamic entry 0x%08x", v)
+	}
+	return fmt.Sprintf("unknown dynamic entry 0x%08x", v)
+}
+
+// Holds a single entry in a 32-bit ELF .dynamic section. The Value can be
+// either an address or a value, depending on the Tag.
+type ELF32DynamicEntry struct {
+	Tag   ELF32DynamicTag
+	Value uint32
+}
+
+func (n *ELF32DynamicEntry) String() string {
+	return fmt.Sprintf("%s, value 0x%08x", n.Tag, n.Value)
+}
+
+// Returns true if the section with the given index is a dynamic linking table.
+func (f *ELF32File) IsDynamicSection(sectionIndex uint16) bool {
+	if int(sectionIndex) >= len(f.Sections) {
+		return false
+	}
+	return f.Sections[sectionIndex].Type == DynamicLinkingTableSection
+}
+
+// Parses and returns the dynamic linking table at the given section index. May
+// include entries past the end of the actual table, depending on the section
+// size, so callers must check for the terminating null entry when referring to
+// the returned slice.
+func (f *ELF32File) GetDynamicTable(sectionIndex uint16) ([]ELF32DynamicEntry,
+	error) {
+	if !f.IsDynamicSection(sectionIndex) {
+		return nil, fmt.Errorf("Section %d is not a dynamic linking section",
+			sectionIndex)
+	}
+	content, e := f.GetSectionContent(sectionIndex)
+	if e != nil {
+		return nil, fmt.Errorf("Failed reading dynamic section: %s", e)
+	}
+	data := bytes.NewReader(content)
+	entryCount := f.Sections[sectionIndex].Size /
+		uint32(binary.Size(&ELF32DynamicEntry{}))
+	toReturn := make([]ELF32DynamicEntry, entryCount)
+	e = binary.Read(data, binary.LittleEndian, toReturn)
+	if e != nil {
+		return nil, fmt.Errorf("Failed parsing dynamic section: %s", e)
 	}
 	return toReturn, nil
 }

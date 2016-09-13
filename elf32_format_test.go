@@ -132,3 +132,35 @@ func TestParseRelocations(t *testing.T) {
 		t.Fail()
 	}
 }
+
+func TestParseDynamicTable(t *testing.T) {
+	f := parseTestELF32("test_data/sleep_arm32", t)
+	found := false
+	for i := range f.Sections {
+		if !f.IsDynamicSection(uint16(i)) {
+			continue
+		}
+		entries, e := f.GetDynamicTable(uint16(i))
+		if e != nil {
+			t.Logf("Failed parsing the dynamic section: %s\n", e)
+			t.FailNow()
+		}
+		found = true
+		if entries[len(entries)-1].Tag != 0 {
+			t.Logf("The last dynamic entry tag wasn't 0.\n", e)
+			t.Fail()
+		}
+		for j := range entries {
+			entry := &(entries[j])
+			t.Logf("Dynamic linking table entry %d: %s\n", j, entry)
+			if entry.Tag == 0 {
+				break
+			}
+		}
+		break
+	}
+	if !found {
+		t.Logf("Couldn't find .dynamic section in the test file.\n")
+		t.Fail()
+	}
+}

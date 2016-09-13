@@ -57,6 +57,20 @@ Known fields which refer to string table entries
 
      - The "Name" field in ELF32Vernaux structures
 
+ - In the dynamic section:
+
+     - The values with the needed tags (1)
+
+     - The string table address (5) must be updated to the virtual address of
+       the modified string table.
+
+     - The string table size (10) must be updated to the size of the modified
+       string table.
+
+     - The shared object name (14)
+
+     - The library search path (15)
+
 Fields which *may* refer to strings, pending further investigation
 ==================================================================
 

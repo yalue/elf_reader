@@ -101,10 +101,36 @@ func printRelocations(f *elf_reader.ELF32File) error {
 	return nil
 }
 
+func printDynamicLinkingTable(f *elf_reader.ELF32File) error {
+	for i := range f.Sections {
+		if !f.IsDynamicSection(uint16(i)) {
+			continue
+		}
+		name, e := f.GetSectionName(uint16(i))
+		if e != nil {
+			return fmt.Errorf("Failed getting dynamic table section name: %s",
+				e)
+		}
+		entries, e := f.GetDynamicTable(uint16(i))
+		if e != nil {
+			return fmt.Errorf("Failed parsing the dynamic section: %s\n", e)
+		}
+		log.Printf("Dynamic linking table in section %s:\n", name)
+		for j := range entries {
+			entry := &(entries[j])
+			log.Printf("  %d. %s\n", j, entry)
+			if entry.Tag == 0 {
+				break
+			}
+		}
+	}
+	return nil
+}
+
 func run() int {
 	var inputFile string
 	var showSections, showSegments, showSymbols, showStrings,
-		showRelocations bool
+		showRelocations, showDynamic bool
 	flag.StringVar(&inputFile, "file", "",
 		"The path to the input ELF file. This is required.")
 	flag.BoolVar(&showSections, "show_sections", false,
@@ -117,6 +143,8 @@ func run() int {
 		"Prints the contents of the string tables if set.")
 	flag.BoolVar(&showRelocations, "show_relocations", false,
 		"Prints a list of relocations if set.")
+	flag.BoolVar(&showDynamic, "show_dynamic", false,
+		"Prints a list of dynamic linking table entries if set.")
 	flag.Parse()
 	if inputFile == "" {
 		log.Printf("Invalid arguments. Run with -help for more information.")
@@ -170,6 +198,14 @@ func run() int {
 		e = printRelocations(elf)
 		if e != nil {
 			log.Printf("Error printing relocations: %s\n", e)
+			return 1
+		}
+	}
+	if showDynamic {
+		log.Println("==== Dynamic linking table ====")
+		e = printDynamicLinkingTable(elf)
+		if e != nil {
+			log.Printf("Error printing the dynamic linking table: %s\n", e)
 			return 1
 		}
 	}
