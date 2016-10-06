@@ -133,17 +133,17 @@ func run() int {
 		showRelocations, showDynamic bool
 	flag.StringVar(&inputFile, "file", "",
 		"The path to the input ELF file. This is required.")
-	flag.BoolVar(&showSections, "show_sections", false,
+	flag.BoolVar(&showSections, "sections", false,
 		"Print a list of sections in the ELF file if set.")
-	flag.BoolVar(&showSegments, "show_segments", false,
+	flag.BoolVar(&showSegments, "segments", false,
 		"Print a list of segments (program headers) if set.")
-	flag.BoolVar(&showSymbols, "show_symbols", false,
+	flag.BoolVar(&showSymbols, "symbols", false,
 		"Print a list of symbols if set.")
-	flag.BoolVar(&showStrings, "show_strings", false,
+	flag.BoolVar(&showStrings, "strings", false,
 		"Prints the contents of the string tables if set.")
-	flag.BoolVar(&showRelocations, "show_relocations", false,
+	flag.BoolVar(&showRelocations, "relocations", false,
 		"Prints a list of relocations if set.")
-	flag.BoolVar(&showDynamic, "show_dynamic", false,
+	flag.BoolVar(&showDynamic, "dynamic", false,
 		"Prints a list of dynamic linking table entries if set.")
 	flag.Parse()
 	if inputFile == "" {

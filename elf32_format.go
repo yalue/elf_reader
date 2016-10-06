@@ -5,40 +5,44 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"io"
 	"strings"
 )
 
 const (
-	ELFTypeRelocatable         = 1
-	ELFTypeExecutable          = 2
-	ELFTypeShared              = 3
-	ELFTypeCore                = 4
-	MachineTypeSPARC           = 0x02
-	MachineTypeX86             = 0x03
-	MachineTypeMIPS            = 0x08
-	MachineTypePowerPC         = 0x14
-	MachineTypeARM             = 0x28
-	MachineTypeAMD64           = 0x3e
-	MachineTypeARM64           = 0xb7
-	NullSegment                = 0
-	LoadableSegment            = 1
-	DynamicLinkingSegment      = 2
-	InterpreterSegment         = 3
-	NoteSegment                = 4
-	ReservedSegment            = 5
-	ProgramHeaderSegment       = 6
-	NullSection                = 0
-	BitsSection                = 1
-	SymbolTableSection         = 2
-	StringTableSection         = 3
-	RelaSection                = 4
-	HashSection                = 5
-	DynamicLinkingTableSection = 6
-	NoteSection                = 7
-	UninitializedSection       = 8
-	RelSection                 = 9
-	ReservedSection            = 10
-	DynamicLoaderSymbolSection = 11
+	ELFTypeRelocatable           = 1
+	ELFTypeExecutable            = 2
+	ELFTypeShared                = 3
+	ELFTypeCore                  = 4
+	MachineTypeSPARC             = 0x02
+	MachineTypeX86               = 0x03
+	MachineTypeMIPS              = 0x08
+	MachineTypePowerPC           = 0x14
+	MachineTypeARM               = 0x28
+	MachineTypeAMD64             = 0x3e
+	MachineTypeARM64             = 0xb7
+	NullSegment                  = 0
+	LoadableSegment              = 1
+	DynamicLinkingSegment        = 2
+	InterpreterSegment           = 3
+	NoteSegment                  = 4
+	ReservedSegment              = 5
+	ProgramHeaderSegment         = 6
+	NullSection                  = 0
+	BitsSection                  = 1
+	SymbolTableSection           = 2
+	StringTableSection           = 3
+	RelaSection                  = 4
+	HashSection                  = 5
+	DynamicLinkingTableSection   = 6
+	NoteSection                  = 7
+	UninitializedSection         = 8
+	RelSection                   = 9
+	ReservedSection              = 10
+	DynamicLoaderSymbolSection   = 11
+	GNUHashSection               = 0x6ffffff5
+	GNUVersionRequirementSection = 0x6ffffffe
+	GNUVersionSymbolSection      = 0x6fffffff
 )
 
 type ELFFileType uint16
@@ -162,6 +166,12 @@ func (ht SectionHeaderType) String() string {
 		return "reserved section"
 	case DynamicLoaderSymbolSection:
 		return "dynamic loader symbol table"
+	case GNUHashSection:
+		return "GNU symbol hash table"
+	case GNUVersionRequirementSection:
+		return "GNU version requirements"
+	case GNUVersionSymbolSection:
+		return "GNU version symbol indices"
 	}
 	if t >= 0x80000000 {
 		return fmt.Sprintf("invalid section type: 0x%x", t)
@@ -254,9 +264,9 @@ type ELF32SectionHeader struct {
 }
 
 func (h *ELF32SectionHeader) String() string {
-	return fmt.Sprintf("%s section at address 0x%x (offset 0x%x in file). "+
-		"%d bytes. %s", h.Type, h.VirtualAddress, h.FileOffset, h.Size,
-		h.Flags)
+	return fmt.Sprintf("%s section. %d bytes at address 0x%x (offset 0x%x in "+
+		"file). Linked to section %d. %s", h.Type, h.Size, h.VirtualAddress,
+		h.FileOffset, h.LinkedIndex, h.Flags)
 }
 
 // Represents the 8-bit info field in symbol table entries
@@ -423,6 +433,21 @@ func (f *ELF32File) GetSectionContent(sectionIndex uint16) ([]byte, error) {
 		return nil, fmt.Errorf("Bad section size")
 	}
 	return f.Raw[start:end], nil
+}
+
+// Returns the string at the given offset in the string table contained in the
+// section at the given section index. Returns an error if one occurs.
+func (f *ELF32File) ReadStringTable(sectionIndex uint16, offset uint32) (
+	string, error) {
+	content, e := f.GetSectionContent(sectionIndex)
+	if e != nil {
+		return "", fmt.Errorf("Couldn't get string table content: %s", e)
+	}
+	if f.Sections[sectionIndex].Type != StringTableSection {
+		return "", fmt.Errorf("Section %d wasn't a string table", sectionIndex)
+	}
+	toReturn, e := readStringAtOffset(offset, content)
+	return string(toReturn), e
 }
 
 // Returns the name of the section at the given index in the section table, or
@@ -709,8 +734,124 @@ func (f *ELF32File) GetDynamicTable(sectionIndex uint16) ([]ELF32DynamicEntry,
 	return toReturn, nil
 }
 
-// TODO (next): Parse dynamic linking tables, followed by OS-specific .gnu*
-// sections. Still keep track of string references!
+// Holds an instance of the ELF32_Verneed structure
+type ELF32VersionNeed struct {
+	Version   uint16
+	Count     uint16
+	File      uint32
+	AuxOffset uint32
+	Next      uint32
+}
+
+// Holds an instance of the ELF32_Vernaux structure
+type ELF32VersionAux struct {
+	Hash  uint32
+	Flags uint16
+	Other uint16
+	Name  uint32
+	Next  uint32
+}
+
+// Returns true if the given section index is a .gnu.version_r section.
+func (f *ELF32File) IsVersionRequirementSection(sectionIndex uint16) bool {
+	if int(sectionIndex) >= len(f.Sections) {
+		return false
+	}
+	return f.Sections[sectionIndex].Type == GNUVersionRequirementSection
+}
+
+// Parses and returns a chain of ELF32VersionAux structures, with the first
+// structure starting at the given offset in a section's content. Requires the
+// number of version aux structures to expect.
+func (f *ELF32File) parseVersionAux(content []byte, firstOffset int64,
+	count uint16) ([]ELF32VersionAux, error) {
+	data := bytes.NewReader(content)
+	_, e := data.Seek(firstOffset, io.SeekStart)
+	if e != nil {
+		return nil, fmt.Errorf("Failed seeking first version aux: %s", e)
+	}
+	toReturn := make([]ELF32VersionAux, 0, count)
+	// Like ParseVersionRequirementSection, we need to get these 1 at a time.
+	var current ELF32VersionAux
+	var startOffset int64
+	for count > 0 {
+		startOffset, e = data.Seek(0, io.SeekCurrent)
+		if e != nil {
+			return nil, fmt.Errorf("Failed getting current offset: %s", e)
+		}
+		e = binary.Read(data, binary.LittleEndian, &current)
+		if e != nil {
+			return nil, fmt.Errorf("Failed parsing aux struct: %s", e)
+		}
+		toReturn = append(toReturn, current)
+		_, e = data.Seek(startOffset+int64(current.Next), io.SeekStart)
+		if e != nil {
+			return nil, fmt.Errorf("Failed seeking to next aux struct: %s", e)
+		}
+		count--
+	}
+	return toReturn, nil
+}
+
+// Returns an array of ELF32VersionNeed structures, in the order they appear in
+// a .gnu.version_r section. For each version needed structure, there will be
+// an associated slice of version aux structures (which will contain at least
+// one entry). Returns an error if the section type is incorrect, etc.
+func (f *ELF32File) ParseVersionRequirementSection(sectionIndex uint16) (
+	[]ELF32VersionNeed, [][]ELF32VersionAux, error) {
+	if !f.IsVersionRequirementSection(sectionIndex) {
+		return nil, nil, fmt.Errorf("Not a version requirement section: %d",
+			sectionIndex)
+	}
+	content, e := f.GetSectionContent(sectionIndex)
+	if e != nil {
+		return nil, nil, fmt.Errorf(
+			"Failed reading version requirement section: %s", e)
+	}
+	data := bytes.NewReader(content)
+	// TODO: Look in the dynamic table rather than estimating like this
+	// Estimate the size of the slice to allocate, since we'll need at least 1
+	// need and 1 aux struct per version requirement.
+	countEstimate := len(content) / (binary.Size(ELF32VersionNeed{}) +
+		binary.Size(ELF32VersionAux{}))
+	if countEstimate == 0 {
+		countEstimate = 1
+	}
+	toReturn := make([]ELF32VersionNeed, 0, countEstimate)
+	auxData := make([][]ELF32VersionAux, 0, countEstimate)
+	// Unlike other ELF structures, we need to read these version entries one
+	// at a time--they may not be directly adjacent.
+	var current ELF32VersionNeed
+	var currentAux []ELF32VersionAux
+	var startOffset int64
+	for {
+		startOffset, e = data.Seek(0, io.SeekCurrent)
+		if e != nil {
+			return nil, nil, fmt.Errorf("Failed getting current offset: %s", e)
+		}
+		e = binary.Read(data, binary.LittleEndian, &current)
+		if e != nil {
+			return nil, nil, fmt.Errorf(
+				"Failed reading version requirement: %s", e)
+		}
+		toReturn = append(toReturn, current)
+		currentAux, e = f.parseVersionAux(content, startOffset+
+			int64(current.AuxOffset), current.Count)
+		if e != nil {
+			return nil, nil, fmt.Errorf("Failed parsing version aux data: %s",
+				e)
+		}
+		auxData = append(auxData, currentAux)
+		// The Next field contains an offset relative to the start of the
+		// version need structure.
+		_, e = data.Seek(startOffset+int64(current.Next), io.SeekStart)
+		if e != nil {
+			return nil, nil, fmt.Errorf(
+				"Failed seeking to next requirement: %s", e)
+		}
+	}
+	return toReturn, auxData, nil
+}
 
 // Used during initialization to fill in the Segments slice.
 func (f *ELF32File) parseProgramHeaders() error {

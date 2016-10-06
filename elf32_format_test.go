@@ -164,3 +164,5 @@ func TestParseDynamicTable(t *testing.T) {
 		t.Fail()
 	}
 }
+
+// TODO: Test reading version requirements
