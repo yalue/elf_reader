@@ -165,4 +165,29 @@ func TestParseDynamicTable(t *testing.T) {
 	}
 }
 
-// TODO: Test reading version requirements
+func TestParseVersionRequirements(t *testing.T) {
+	f := parseTestELF32("test_data/sleep_arm32", t)
+	found := false
+	for i := range f.Sections {
+		if !f.IsVersionRequirementSection(uint16(i)) {
+			continue
+		}
+		found = true
+		need, aux, e := f.ParseVersionRequirementSection(uint16(i))
+		if e != nil {
+			t.Logf("Failed parsing version requirement section: %s\n", e)
+			t.FailNow()
+		}
+		for j, n := range need {
+			t.Logf("Version requirement %d: %s\n", j, &n)
+			for k, x := range aux[j] {
+				t.Logf("  Symbol requirement %d: %s\n", k, &x)
+			}
+		}
+	}
+	if !found {
+		t.Logf("Couldn't find the GNU version requirement section in the " +
+			"test file.\n")
+		t.Fail()
+	}
+}

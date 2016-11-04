@@ -23,3 +23,20 @@ func readStringAtOffset(offset uint32, data []byte) ([]byte, error) {
 	}
 	return data[offset:endIndex], nil
 }
+
+// Calculates the hash value of a given string.
+func ELF32Hash(data []byte) uint32 {
+	var hash, highBits uint32
+	for _, character := range data {
+		if character == 0 {
+			break
+		}
+		hash = (hash << 4) + uint32(character)
+		highBits = hash & 0xf0000000
+		if highBits != 0 {
+			hash ^= highBits >> 24
+		}
+		hash &= ^highBits
+	}
+	return hash
+}

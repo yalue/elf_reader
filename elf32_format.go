@@ -743,6 +743,11 @@ type ELF32VersionNeed struct {
 	Next      uint32
 }
 
+func (n *ELF32VersionNeed) String() string {
+	return fmt.Sprintf("Need version %d of file at string table offset %d",
+		n.Version, n.File)
+}
+
 // Holds an instance of the ELF32_Vernaux structure
 type ELF32VersionAux struct {
 	Hash  uint32
@@ -750,6 +755,11 @@ type ELF32VersionAux struct {
 	Other uint16
 	Name  uint32
 	Next  uint32
+}
+
+func (a *ELF32VersionAux) String() string {
+	return fmt.Sprintf("Need definition with hash 0x%08x and name at string "+
+		"table offset %d", a.Hash, a.Name)
 }
 
 // Returns true if the given section index is a .gnu.version_r section.
@@ -793,10 +803,52 @@ func (f *ELF32File) parseVersionAux(content []byte, firstOffset int64,
 	return toReturn, nil
 }
 
+// Reads the dynamic linking table to find the number of entries in the GNU
+// version dependency table.
+func (f *ELF32File) getVersionDependencyTableSize() (uint32, error) {
+	var entries []ELF32DynamicEntry
+	var e error
+	for i := range f.Sections {
+		if !f.IsDynamicSection(uint16(i)) {
+			continue
+		}
+		entries, e = f.GetDynamicTable(uint16(i))
+		if e != nil {
+			return 0, fmt.Errorf("Failed reading the dynamic table: %s", e)
+		}
+		break
+	}
+	if entries == nil {
+		return 0, fmt.Errorf("Couldn't find the dynamic table section")
+	}
+	var entry *ELF32DynamicEntry
+	var toReturn uint32
+	found := false
+	for j := range entries {
+		entry = &(entries[j])
+		if entry.Tag == 0 {
+			break
+		}
+		if entry.Tag != 0x6fffffff {
+			continue
+		}
+		toReturn = entry.Value
+		found = true
+		break
+	}
+	if !found {
+		return 0, fmt.Errorf("The dynamic table didn't contain the number " +
+			"of GNU version requirements")
+	}
+	return toReturn, nil
+}
+
 // Returns an array of ELF32VersionNeed structures, in the order they appear in
 // a .gnu.version_r section. For each version needed structure, there will be
 // an associated slice of version aux structures (which will contain at least
-// one entry). Returns an error if the section type is incorrect, etc.
+// one entry). If a version requirement section exists but contains no entries,
+// this function may return nil, but no error. Returns an error if the section
+// type is incorrect or couldn't be parsed for some reason.
 func (f *ELF32File) ParseVersionRequirementSection(sectionIndex uint16) (
 	[]ELF32VersionNeed, [][]ELF32VersionAux, error) {
 	if !f.IsVersionRequirementSection(sectionIndex) {
@@ -809,21 +861,22 @@ func (f *ELF32File) ParseVersionRequirementSection(sectionIndex uint16) (
 			"Failed reading version requirement section: %s", e)
 	}
 	data := bytes.NewReader(content)
-	// TODO: Look in the dynamic table rather than estimating like this
-	// Estimate the size of the slice to allocate, since we'll need at least 1
-	// need and 1 aux struct per version requirement.
-	countEstimate := len(content) / (binary.Size(ELF32VersionNeed{}) +
-		binary.Size(ELF32VersionAux{}))
-	if countEstimate == 0 {
-		countEstimate = 1
+	entryCount, e := f.getVersionDependencyTableSize()
+	if e != nil {
+		return nil, nil, e
 	}
-	toReturn := make([]ELF32VersionNeed, 0, countEstimate)
-	auxData := make([][]ELF32VersionAux, 0, countEstimate)
+	if entryCount == 0 {
+		return nil, nil, nil
+	}
+	fmt.Printf("DEBUG: version dependency table has %d entries.\n", entryCount)
+	toReturn := make([]ELF32VersionNeed, 0, entryCount)
+	auxData := make([][]ELF32VersionAux, 0, entryCount)
 	// Unlike other ELF structures, we need to read these version entries one
 	// at a time--they may not be directly adjacent.
 	var current ELF32VersionNeed
 	var currentAux []ELF32VersionAux
 	var startOffset int64
+	var totalRead uint32
 	for {
 		startOffset, e = data.Seek(0, io.SeekCurrent)
 		if e != nil {
@@ -842,6 +895,10 @@ func (f *ELF32File) ParseVersionRequirementSection(sectionIndex uint16) (
 				e)
 		}
 		auxData = append(auxData, currentAux)
+		totalRead++
+		if totalRead >= entryCount {
+			break
+		}
 		// The Next field contains an offset relative to the start of the
 		// version need structure.
 		_, e = data.Seek(startOffset+int64(current.Next), io.SeekStart)
