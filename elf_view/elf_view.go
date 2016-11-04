@@ -1,4 +1,4 @@
-// The elf_view executable is yet-another-ELF-viewer program joinging the likes
+// The elf_view executable is yet-another-ELF-viewer program joining the likes
 // of objdump and readelf, but is probably less complete. It exists primarily
 // to facilitate testing of the elf_reader package.
 //
