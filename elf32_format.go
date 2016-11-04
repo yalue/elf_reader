@@ -1,4 +1,18 @@
 // This package contains functions for reading ELF files.
+//
+// Example usage, printing section names:
+//
+//    raw, e := ioutil.ReadFile("/bin/bash")
+//    // if e != nil {...}
+//    elf, e = elf_reader.ParseELF32File(raw)
+//    // if e != nil {...}
+//    for i := range elf.Sections {
+//        if i != 0 {
+//            name, e := elf.GetSectionName(uint16(i))
+//            // if e != nil {...}
+//            fmt.Printf("Section %d: %s", i, name)
+//        }
+//    }
 package elf_reader
 
 import (
