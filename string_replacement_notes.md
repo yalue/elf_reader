@@ -23,19 +23,22 @@ How ELF strings are replaced
     the end of the file). Don't forget to update the Virtual Address field
     in addition to the file offset.
 
- 7. For each string reference in the file, look at the two offset maps created
+ 7. Change the string table virtual addresses and size in the dynamic linking
+    table (entries with tags 5 and 10, respectively).
+
+ 8. For each string reference in the file, look at the two offset maps created
     when parsing the original string tables and rebuilding the updated ones.
     Update the references to the correct new offsets.
 
- 8. Add a new loadable read only data segment that will encompass the string
+ 9. Add a new loadable read only data segment that will encompass the string
     tables at the end of the file. Make sure it uses the correct virtual
     address and file offsets.
 
- 9. Add the new segment to the segment header table. Write this to the end of
-    the file, too. Expand the size of the new read-only data segment containing
-    the updated string tables to also include the size of these new segment
-    headers. Make sure the new program header table starts at an 8-byte aligned
-    address.
+ 10. Add the new segment to the segment header table. Write this to the end of
+     the file, too. Expand the size of the new read-only data segment containing
+     the updated string tables to also include the size of these new segment
+     headers. Make sure the new program header table starts at an 8-byte aligned
+     address.
 
  10. In the new segment header table, update the program headers segment to
      encompass the relocated program headers.
@@ -61,17 +64,11 @@ Known fields which refer to string table entries
 
  - In the dynamic section:
 
-    - The values with the needed tags (1)
+    - The values with the needed tags (tag = 1)
 
-    - The string table address (5) must be updated to the virtual address of
-       the modified string table.
+    - The shared object name (tag = 14)
 
-    - The string table size (10) must be updated to the size of the modified
-       string table.
-
-    - The shared object name (14)
-
-    - The library search path (15)
+    - The library search path (tag = 15)
 
  - Hash table sections must be rebuilt if symbol names are changed. To do this,
    take the original hash table section and parse out the headers, etc. Then,

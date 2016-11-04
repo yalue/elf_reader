@@ -8,8 +8,9 @@ import (
 )
 
 // Returns a string starting at the offset in the data, or an error if the
-// offset is invalid or the string isn't terminated.
-func readStringAtOffset(offset uint32, data []byte) ([]byte, error) {
+// offset is invalid or the string isn't terminated. This can be used to
+// extract strings from string table content.
+func ReadStringAtOffset(offset uint32, data []byte) ([]byte, error) {
 	if offset >= uint32(len(data)) {
 		return nil, fmt.Errorf("Invalid string offset: %d", offset)
 	}

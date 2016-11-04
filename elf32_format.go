@@ -412,10 +412,11 @@ func (e *ELF32Rela) String() string {
 
 // Tracks parsed data for a 32-bit ELF.
 type ELF32File struct {
-	Header   ELF32Header
-	Sections []ELF32SectionHeader
-	Segments []ELF32ProgramHeader
-	Raw      []byte
+	Header     ELF32Header
+	Sections   []ELF32SectionHeader
+	Segments   []ELF32ProgramHeader
+	Raw        []byte
+	Endianness binary.ByteOrder
 }
 
 // Returns the bytes of the section at the given index, or an error if one
@@ -446,7 +447,7 @@ func (f *ELF32File) ReadStringTable(sectionIndex uint16, offset uint32) (
 	if f.Sections[sectionIndex].Type != StringTableSection {
 		return "", fmt.Errorf("Section %d wasn't a string table", sectionIndex)
 	}
-	toReturn, e := readStringAtOffset(offset, content)
+	toReturn, e := ReadStringAtOffset(offset, content)
 	return string(toReturn), e
 }
 
@@ -460,7 +461,7 @@ func (f *ELF32File) GetSectionName(sectionIndex uint16) (string, error) {
 	if e != nil {
 		return "", fmt.Errorf("Couldn't read section names table: %s", e)
 	}
-	name, e := readStringAtOffset(f.Sections[sectionIndex].Name, stringContent)
+	name, e := ReadStringAtOffset(f.Sections[sectionIndex].Name, stringContent)
 	if e != nil {
 		return "", fmt.Errorf("Couldn't read section name: %s", e)
 	}
@@ -508,7 +509,7 @@ func (f *ELF32File) GetSymbolTable(sectionIndex uint16) ([]ELF32Symbol,
 	entryCount := header.Size / uint32(binary.Size(&ELF32Symbol{}))
 	symbols := make([]ELF32Symbol, entryCount)
 	data := bytes.NewReader(content)
-	e = binary.Read(data, binary.LittleEndian, symbols)
+	e = binary.Read(data, f.Endianness, symbols)
 	if e != nil {
 		return nil, nil, fmt.Errorf("Failed parsing symbol table: %s", e)
 	}
@@ -523,7 +524,7 @@ func (f *ELF32File) GetSymbolTable(sectionIndex uint16) ([]ELF32Symbol,
 			names[i] = ""
 			continue
 		}
-		tmp, e = readStringAtOffset(nameOffset, nameTable)
+		tmp, e = ReadStringAtOffset(nameOffset, nameTable)
 		if e != nil {
 			return nil, nil, fmt.Errorf("Couldn't read name for symbol %d: %s",
 				i, e)
@@ -584,7 +585,7 @@ func (f *ELF32File) GetRelocationTable(sectionIndex uint16) ([]ELF32Relocation,
 		// returned as a slice of the interface? That's why we need to convert
 		// to a slice of pointers which do satisfy the interface.
 		toReturnData := make([]ELF32Rela, entryCount)
-		e = binary.Read(data, binary.LittleEndian, toReturnData)
+		e = binary.Read(data, f.Endianness, toReturnData)
 		if e != nil {
 			return nil, fmt.Errorf("Failed parsing rela table: %s", e)
 		}
@@ -597,7 +598,7 @@ func (f *ELF32File) GetRelocationTable(sectionIndex uint16) ([]ELF32Relocation,
 	// We're assuming this is a .rel section, since it wasn't .rela
 	entryCount := int(header.Size) / binary.Size(&ELF32Rel{})
 	toReturnData := make([]ELF32Rel, entryCount)
-	e = binary.Read(data, binary.LittleEndian, toReturnData)
+	e = binary.Read(data, f.Endianness, toReturnData)
 	if e != nil {
 		return nil, fmt.Errorf("Failed parsing rel table: %s", e)
 	}
@@ -727,7 +728,7 @@ func (f *ELF32File) GetDynamicTable(sectionIndex uint16) ([]ELF32DynamicEntry,
 	entryCount := f.Sections[sectionIndex].Size /
 		uint32(binary.Size(&ELF32DynamicEntry{}))
 	toReturn := make([]ELF32DynamicEntry, entryCount)
-	e = binary.Read(data, binary.LittleEndian, toReturn)
+	e = binary.Read(data, f.Endianness, toReturn)
 	if e != nil {
 		return nil, fmt.Errorf("Failed parsing dynamic section: %s", e)
 	}
@@ -789,7 +790,7 @@ func (f *ELF32File) parseVersionAux(content []byte, firstOffset int64,
 		if e != nil {
 			return nil, fmt.Errorf("Failed getting current offset: %s", e)
 		}
-		e = binary.Read(data, binary.LittleEndian, &current)
+		e = binary.Read(data, f.Endianness, &current)
 		if e != nil {
 			return nil, fmt.Errorf("Failed parsing aux struct: %s", e)
 		}
@@ -868,7 +869,6 @@ func (f *ELF32File) ParseVersionRequirementSection(sectionIndex uint16) (
 	if entryCount == 0 {
 		return nil, nil, nil
 	}
-	fmt.Printf("DEBUG: version dependency table has %d entries.\n", entryCount)
 	toReturn := make([]ELF32VersionNeed, 0, entryCount)
 	auxData := make([][]ELF32VersionAux, 0, entryCount)
 	// Unlike other ELF structures, we need to read these version entries one
@@ -882,7 +882,7 @@ func (f *ELF32File) ParseVersionRequirementSection(sectionIndex uint16) (
 		if e != nil {
 			return nil, nil, fmt.Errorf("Failed getting current offset: %s", e)
 		}
-		e = binary.Read(data, binary.LittleEndian, &current)
+		e = binary.Read(data, f.Endianness, &current)
 		if e != nil {
 			return nil, nil, fmt.Errorf(
 				"Failed reading version requirement: %s", e)
@@ -918,7 +918,7 @@ func (f *ELF32File) parseProgramHeaders() error {
 	}
 	data := bytes.NewReader(f.Raw[offset:])
 	segments := make([]ELF32ProgramHeader, f.Header.ProgramHeaderEntries)
-	e := binary.Read(data, binary.LittleEndian, segments)
+	e := binary.Read(data, f.Endianness, segments)
 	if e != nil {
 		return fmt.Errorf("Failed reading program header table: %s", e)
 	}
@@ -934,7 +934,7 @@ func (f *ELF32File) parseSectionHeaders() error {
 	}
 	data := bytes.NewReader(f.Raw[offset:])
 	sections := make([]ELF32SectionHeader, f.Header.SectionHeaderEntries)
-	e := binary.Read(data, binary.LittleEndian, sections)
+	e := binary.Read(data, f.Endianness, sections)
 	if e != nil {
 		return fmt.Errorf("Failed reading section header table: %s", e)
 	}
@@ -947,24 +947,44 @@ func (f *ELF32File) parseSectionHeaders() error {
 func ParseELF32File(raw []byte) (*ELF32File, error) {
 	var header ELF32Header
 	data := bytes.NewReader(raw)
-	e := binary.Read(data, binary.LittleEndian, &header)
+	var signature uint32
+	var e error
+	e = binary.Read(data, binary.LittleEndian, &signature)
+	if e != nil {
+		return nil, fmt.Errorf("Failed reading ELF signature: %s", e)
+	}
+	if signature != 0x464c457f {
+		return nil, fmt.Errorf("Invalid ELF signature: 0x%08x", signature)
+	}
+	// Rewind the input back to the beginning.
+	data = bytes.NewReader(raw)
+	if len(raw) < 6 {
+		return nil, fmt.Errorf("Insufficient size for an ELF file")
+	}
+	var endianness binary.ByteOrder
+	if raw[5] != 1 {
+		if raw[5] != 2 {
+			return nil, fmt.Errorf("Invalid encoding/endianness: %d", raw[5])
+		}
+		endianness = binary.BigEndian
+	} else {
+		endianness = binary.LittleEndian
+	}
+	e = binary.Read(data, endianness, &header)
 	if e != nil {
 		return nil, fmt.Errorf("Failed reading ELF32 header: %s", e)
 	}
-	if header.Signature != 0x464c457f {
-		return nil, fmt.Errorf("Invalid ELF signature: 0x%08x",
-			header.Signature)
-	}
+	// This may have been incorrectly reversed if we're big-endian, so we'll
+	// copy the correct little-endian version just in case.
+	header.Signature = signature
 	if header.Class != 1 {
 		return nil, fmt.Errorf("ELF class incorrect for 32-bit: %d",
 			header.Class)
 	}
-	if header.Endianness != 1 {
-		return nil, fmt.Errorf("Big-Endian ELF files aren't supported yet")
-	}
 	var toReturn ELF32File
 	toReturn.Header = header
 	toReturn.Raw = raw
+	toReturn.Endianness = endianness
 	e = (&toReturn).parseProgramHeaders()
 	if e != nil {
 		return nil, e

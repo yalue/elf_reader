@@ -102,26 +102,103 @@ func printRelocations(f *elf_reader.ELF32File) error {
 }
 
 func printDynamicLinkingTable(f *elf_reader.ELF32File) error {
+	var sectionIndex uint16
+	var e error
 	for i := range f.Sections {
 		if !f.IsDynamicSection(uint16(i)) {
 			continue
 		}
-		name, e := f.GetSectionName(uint16(i))
-		if e != nil {
-			return fmt.Errorf("Failed getting dynamic table section name: %s",
-				e)
-		}
-		entries, e := f.GetDynamicTable(uint16(i))
-		if e != nil {
-			return fmt.Errorf("Failed parsing the dynamic section: %s\n", e)
-		}
-		log.Printf("Dynamic linking table in section %s:\n", name)
-		for j := range entries {
-			entry := &(entries[j])
-			log.Printf("  %d. %s\n", j, entry)
-			if entry.Tag == 0 {
-				break
+		sectionIndex = uint16(i)
+		break
+	}
+	if sectionIndex == 0 {
+		log.Printf("No dynamic linking table was found.\n")
+		return nil
+	}
+	name, e := f.GetSectionName(sectionIndex)
+	if e != nil {
+		return fmt.Errorf("Failed getting dynamic table section name: %s",
+			e)
+	}
+	entries, e := f.GetDynamicTable(sectionIndex)
+	if e != nil {
+		return fmt.Errorf("Failed parsing the dynamic section: %s", e)
+	}
+	log.Printf("Dynamic linking table in section %s:\n", name)
+	stringContent, e := f.GetSectionContent(
+		uint16(f.Sections[sectionIndex].LinkedIndex))
+	if e != nil {
+		return fmt.Errorf("Failed getting strings for dynamic section: %s", e)
+	}
+	var stringValue []byte
+	for i := range entries {
+		entry := &(entries[i])
+		// If the tag indicates a string value, we'll print the string instead
+		// of the default format.
+		switch entry.Tag {
+		case 1, 14, 15:
+			stringValue, e = elf_reader.ReadStringAtOffset(entry.Value,
+				stringContent)
+			if e != nil {
+				return fmt.Errorf("Failed getting string value for tag %s: %s",
+					entry.Tag, e)
 			}
+			log.Printf("  %d. %s: %s\n", i, entry.Tag, stringValue)
+		default:
+			log.Printf("  %d. %s\n", i, entry)
+		}
+		if entry.Tag == 0 {
+			break
+		}
+	}
+	return nil
+}
+
+func printGNUVersionRequirements(f *elf_reader.ELF32File) error {
+	var sectionIndex uint16
+	// The file should only have one of these sections.
+	for i := range f.Sections {
+		if !f.IsVersionRequirementSection(uint16(i)) {
+			continue
+		}
+		sectionIndex = uint16(i)
+		break
+	}
+	if sectionIndex == 0 {
+		log.Printf("No GNU version requirement section was found.")
+		return nil
+	}
+	section := &(f.Sections[sectionIndex])
+	stringContent, e := f.GetSectionContent(uint16(section.LinkedIndex))
+	if e != nil {
+		return fmt.Errorf("Couldn't get string table for GNU version "+
+			"requirement section: %s", e)
+	}
+	need, aux, e := f.ParseVersionRequirementSection(sectionIndex)
+	if e != nil {
+		return fmt.Errorf("Failed parsing GNU version req. section: %s", e)
+	}
+	sectionName, e := f.GetSectionName(uint16(sectionIndex))
+	if e != nil {
+		return fmt.Errorf("Failed getting GBU version req. section name: %s",
+			e)
+	}
+	log.Printf("GNU version requirements in section %s:\n", sectionName)
+	var fileName, requirementName []byte
+	for i, n := range need {
+		fileName, e = elf_reader.ReadStringAtOffset(n.File, stringContent)
+		if e != nil {
+			return fmt.Errorf("Failed reading required file name: %s", e)
+		}
+		log.Printf(" File %d: %s, version %d\n", i, fileName, n.Version)
+		for j, x := range aux[i] {
+			requirementName, e = elf_reader.ReadStringAtOffset(x.Name,
+				stringContent)
+			if e != nil {
+				return fmt.Errorf("Failed reading requirement name: %s", e)
+			}
+			log.Printf("   Requirement %d: %s, hash 0x%08x\n", j,
+				requirementName, x.Hash)
 		}
 	}
 	return nil
@@ -130,7 +207,7 @@ func printDynamicLinkingTable(f *elf_reader.ELF32File) error {
 func run() int {
 	var inputFile string
 	var showSections, showSegments, showSymbols, showStrings,
-		showRelocations, showDynamic bool
+		showRelocations, showDynamic, showRequirements bool
 	flag.StringVar(&inputFile, "file", "",
 		"The path to the input ELF file. This is required.")
 	flag.BoolVar(&showSections, "sections", false,
@@ -145,6 +222,8 @@ func run() int {
 		"Prints a list of relocations if set.")
 	flag.BoolVar(&showDynamic, "dynamic", false,
 		"Prints a list of dynamic linking table entries if set.")
+	flag.BoolVar(&showRequirements, "requirements", false,
+		"Prints a list of the GNU version requirements if set.")
 	flag.Parse()
 	if inputFile == "" {
 		log.Printf("Invalid arguments. Run with -help for more information.")
@@ -206,6 +285,14 @@ func run() int {
 		e = printDynamicLinkingTable(elf)
 		if e != nil {
 			log.Printf("Error printing the dynamic linking table: %s\n", e)
+			return 1
+		}
+	}
+	if showRequirements {
+		log.Println("==== GNU version requirements ====")
+		e = printGNUVersionRequirements(elf)
+		if e != nil {
+			log.Printf("Error printing GNU version requirements: %s\n", e)
 			return 1
 		}
 	}
