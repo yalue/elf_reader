@@ -208,6 +208,7 @@ func run() int {
 	var inputFile string
 	var showSections, showSegments, showSymbols, showStrings,
 		showRelocations, showDynamic, showRequirements bool
+	var dumpSection int
 	flag.StringVar(&inputFile, "file", "",
 		"The path to the input ELF file. This is required.")
 	flag.BoolVar(&showSections, "sections", false,
@@ -224,6 +225,9 @@ func run() int {
 		"Prints a list of dynamic linking table entries if set.")
 	flag.BoolVar(&showRequirements, "requirements", false,
 		"Prints a list of the GNU version requirements if set.")
+	flag.IntVar(&dumpSection, "dump_section", -1,
+		"If a valid section index is provided, binary contents of the section"+
+			" will be dumped to stdout and other output will be surpressed.")
 	flag.Parse()
 	if inputFile == "" {
 		log.Println("Invalid arguments. Run with -help for more information.")
@@ -238,6 +242,15 @@ func run() int {
 	if e != nil {
 		log.Printf("Failed parsing the input file: %s\n", e)
 		return 1
+	}
+	if dumpSection != -1 {
+		content, e := elf.GetSectionContent(uint16(dumpSection))
+		if e != nil {
+			log.Printf("Failed dumping section contents: %s\n", e)
+			return 1
+		}
+		log.Printf("%s", content)
+		return 0
 	}
 	log.Printf("Successfully parsed file %s\n", inputFile)
 	if showSections {
