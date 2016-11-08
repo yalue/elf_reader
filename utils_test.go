@@ -1,6 +1,7 @@
 package elf_reader
 
 import (
+	"encoding/binary"
 	"testing"
 )
 
@@ -50,5 +51,20 @@ func TestELF32Hash(t *testing.T) {
 	if hash != 0x086c29bc {
 		t.Logf("Got incorrect PJW hash: 0x%08x\n", hash)
 		t.Fail()
+	}
+}
+
+func TestWriteAtOffset(t *testing.T) {
+	data := []byte("Hi there")
+	toWrite := uint32(0x20212121)
+	data, e := WriteAtOffset(data, uint64(len(data)), binary.BigEndian,
+		toWrite)
+	if e != nil {
+		t.Logf("Failed writing data at offset: %s\n", e)
+		t.FailNow()
+	}
+	if string(data) != "Hi there !!!" {
+		t.Logf("Got wrong data after writing: %s\n", data)
+		t.FailNow()
 	}
 }

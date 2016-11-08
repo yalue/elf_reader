@@ -956,29 +956,30 @@ func (f *ELF32File) parseSectionHeaders() error {
 	return nil
 }
 
-// Attempts to parse the given data buffer as a 32-bit ELF file. Returns an
-// error if the file isn't a 32-bit, little-endian ELF.
-func ParseELF32File(raw []byte) (*ELF32File, error) {
+// This function must be called in order to re-parse internal data structures
+// if the Raw buffer has been updated.
+func (f *ELF32File) ReparseData() error {
 	var header ELF32Header
+	raw := f.Raw
 	data := bytes.NewReader(raw)
 	var signature uint32
 	var e error
 	e = binary.Read(data, binary.LittleEndian, &signature)
 	if e != nil {
-		return nil, fmt.Errorf("Failed reading ELF signature: %s", e)
+		return fmt.Errorf("Failed reading ELF signature: %s", e)
 	}
 	if signature != 0x464c457f {
-		return nil, fmt.Errorf("Invalid ELF signature: 0x%08x", signature)
+		return fmt.Errorf("Invalid ELF signature: 0x%08x", signature)
 	}
 	// Rewind the input back to the beginning.
 	data = bytes.NewReader(raw)
 	if len(raw) < 6 {
-		return nil, fmt.Errorf("Insufficient size for an ELF file")
+		return fmt.Errorf("Insufficient size for an ELF file")
 	}
 	var endianness binary.ByteOrder
 	if raw[5] != 1 {
 		if raw[5] != 2 {
-			return nil, fmt.Errorf("Invalid encoding/endianness: %d", raw[5])
+			return fmt.Errorf("Invalid encoding/endianness: %d", raw[5])
 		}
 		endianness = binary.BigEndian
 	} else {
@@ -986,24 +987,34 @@ func ParseELF32File(raw []byte) (*ELF32File, error) {
 	}
 	e = binary.Read(data, endianness, &header)
 	if e != nil {
-		return nil, fmt.Errorf("Failed reading ELF32 header: %s", e)
+		return fmt.Errorf("Failed reading ELF32 header: %s", e)
 	}
 	// This may have been incorrectly reversed if we're big-endian, so we'll
 	// copy the correct little-endian version just in case.
 	header.Signature = signature
 	if header.Class != 1 {
-		return nil, fmt.Errorf("ELF class incorrect for 32-bit: %d",
-			header.Class)
+		return fmt.Errorf("ELF class incorrect for 32-bit: %d", header.Class)
 	}
-	var toReturn ELF32File
-	toReturn.Header = header
-	toReturn.Raw = raw
-	toReturn.Endianness = endianness
-	e = (&toReturn).parseProgramHeaders()
+	f.Header = header
+	f.Endianness = endianness
+	e = f.parseProgramHeaders()
 	if e != nil {
-		return nil, e
+		return e
 	}
-	e = (&toReturn).parseSectionHeaders()
+	e = f.parseSectionHeaders()
+	if e != nil {
+		return e
+	}
+	return nil
+
+}
+
+// Attempts to parse the given data buffer as a 32-bit ELF file. Returns an
+// error if the file isn't a 32-bit, little-endian ELF.
+func ParseELF32File(raw []byte) (*ELF32File, error) {
+	var toReturn ELF32File
+	toReturn.Raw = raw
+	e := (&toReturn).ReparseData()
 	if e != nil {
 		return nil, e
 	}

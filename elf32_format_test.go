@@ -179,9 +179,9 @@ func TestParseVersionRequirements(t *testing.T) {
 			t.FailNow()
 		}
 		for j, n := range need {
-			t.Logf("Version requirement %d: %s\n", j, &n)
+			t.Logf("File %d: %s\n", j, &n)
 			for k, x := range aux[j] {
-				t.Logf("  Symbol requirement %d: %s\n", k, &x)
+				t.Logf("  Requirement %d: %s\n", k, &x)
 			}
 		}
 	}

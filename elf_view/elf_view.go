@@ -226,7 +226,7 @@ func run() int {
 		"Prints a list of the GNU version requirements if set.")
 	flag.Parse()
 	if inputFile == "" {
-		log.Printf("Invalid arguments. Run with -help for more information.")
+		log.Println("Invalid arguments. Run with -help for more information.")
 		return 1
 	}
 	rawInput, e := ioutil.ReadFile(inputFile)
