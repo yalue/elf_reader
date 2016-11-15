@@ -204,10 +204,56 @@ func printGNUVersionRequirements(f *elf_reader.ELF32File) error {
 	return nil
 }
 
+func printGNUVersionDefinitions(f *elf_reader.ELF32File) error {
+	var sectionIndex uint16
+	// The file should only have one of these sections.
+	for i := range f.Sections {
+		if !f.IsVersionDefinitionSection(uint16(i)) {
+			continue
+		}
+		sectionIndex = uint16(i)
+		break
+	}
+	if sectionIndex == 0 {
+		log.Printf("No GNU version defintion section was found")
+		return nil
+	}
+	section := &(f.Sections[sectionIndex])
+	stringContent, e := f.GetSectionContent(uint16(section.LinkedIndex))
+	if e != nil {
+		return fmt.Errorf("Couldn't get string table for GNU version "+
+			"definition section: %s", e)
+	}
+	def, aux, e := f.ParseVersionDefinitionSection(sectionIndex)
+	if e != nil {
+		return fmt.Errorf("Failed parsing GNU version def. section: %s", e)
+	}
+	sectionName, e := f.GetSectionName(uint16(sectionIndex))
+	if e != nil {
+		return fmt.Errorf("Failed getting GBU version def. section name: %s",
+			e)
+	}
+	log.Printf("GNU version definitions in section %s:\n", sectionName)
+	var definitionName []byte
+	for i, n := range def {
+		log.Printf(" Definition %d: %s", i, &n)
+		for j, x := range aux[i] {
+			definitionName, e = elf_reader.ReadStringAtOffset(x.Name,
+				stringContent)
+			if e != nil {
+				return fmt.Errorf("Failed reading definition name: %s", e)
+			}
+			log.Printf("   Name %d: %s\n", j, definitionName)
+		}
+	}
+	return nil
+}
+
 func run() int {
 	var inputFile string
 	var showSections, showSegments, showSymbols, showStrings,
-		showRelocations, showDynamic, showRequirements bool
+		showRelocations, showDynamic, showRequirements,
+		showDefinitions bool
 	var dumpSection int
 	flag.StringVar(&inputFile, "file", "",
 		"The path to the input ELF file. This is required.")
@@ -225,6 +271,8 @@ func run() int {
 		"Prints a list of dynamic linking table entries if set.")
 	flag.BoolVar(&showRequirements, "requirements", false,
 		"Prints a list of the GNU version requirements if set.")
+	flag.BoolVar(&showDefinitions, "definitions", false,
+		"Prints a list of GNU version definitions if set.")
 	flag.IntVar(&dumpSection, "dump_section", -1,
 		"If a valid section index is provided, binary contents of the section"+
 			" will be dumped to stdout and other output will be surpressed.")
@@ -306,6 +354,14 @@ func run() int {
 		e = printGNUVersionRequirements(elf)
 		if e != nil {
 			log.Printf("Error printing GNU version requirements: %s\n", e)
+			return 1
+		}
+	}
+	if showDefinitions {
+		log.Println("==== GNU version definitions ====")
+		e = printGNUVersionDefinitions(elf)
+		if e != nil {
+			log.Printf("Error printing GNU version definitions: %s\n", e)
 			return 1
 		}
 	}

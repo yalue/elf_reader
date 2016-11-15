@@ -191,3 +191,30 @@ func TestParseVersionRequirements(t *testing.T) {
 		t.Fail()
 	}
 }
+
+func TestParseVersionDefinitions(t *testing.T) {
+	f := parseTestELF32("test_data/ld-linux_arm32.so", t)
+	found := false
+	for i := range f.Sections {
+		if !f.IsVersionDefinitionSection(uint16(i)) {
+			continue
+		}
+		found = true
+		def, aux, e := f.ParseVersionDefinitionSection(uint16(i))
+		if e != nil {
+			t.Logf("Failed parsing version definition section: %s\n", e)
+			t.FailNow()
+		}
+		for j, d := range def {
+			t.Logf("Definition %d: %s\n", j, &d)
+			for k, x := range aux[j] {
+				t.Logf("  Aux %d: %s\n", k, &x)
+			}
+		}
+	}
+	if !found {
+		t.Logf("Couldn't find the GNU version definition section in the " +
+			"test shared library file.\n")
+		t.Fail()
+	}
+}

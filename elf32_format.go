@@ -55,6 +55,7 @@ const (
 	ReservedSection              = 10
 	DynamicLoaderSymbolSection   = 11
 	GNUHashSection               = 0x6ffffff5
+	GNUVersionDefinitionSection  = 0x6ffffffd
 	GNUVersionRequirementSection = 0x6ffffffe
 	GNUVersionSymbolSection      = 0x6fffffff
 )
@@ -182,6 +183,8 @@ func (ht SectionHeaderType) String() string {
 		return "dynamic loader symbol table"
 	case GNUHashSection:
 		return "GNU symbol hash table"
+	case GNUVersionDefinitionSection:
+		return "GNU version definitions"
 	case GNUVersionRequirementSection:
 		return "GNU version requirements"
 	case GNUVersionSymbolSection:
@@ -690,6 +693,10 @@ func (t ELF32DynamicTag) String() string {
 		return "GNU hash table address"
 	case 0x6ffffff0:
 		return "version symbol table address"
+	case 0x6ffffffc:
+		return "version definition table address"
+	case 0x6ffffffd:
+		return "number of version definition table entries"
 	case 0x6ffffffe:
 		return "version dependency table address"
 	case 0x6fffffff:
@@ -764,7 +771,7 @@ func (n *ELF32VersionNeed) String() string {
 }
 
 // Holds an instance of the ELF32_Vernaux structure
-type ELF32VersionAux struct {
+type ELF32VersionNeedAux struct {
 	Hash  uint32
 	Flags uint16
 	Other uint16
@@ -772,7 +779,7 @@ type ELF32VersionAux struct {
 	Next  uint32
 }
 
-func (a *ELF32VersionAux) String() string {
+func (a *ELF32VersionNeedAux) String() string {
 	return fmt.Sprintf("Need definition with hash 0x%08x and name at string "+
 		"table offset %d", a.Hash, a.Name)
 }
@@ -785,19 +792,19 @@ func (f *ELF32File) IsVersionRequirementSection(sectionIndex uint16) bool {
 	return f.Sections[sectionIndex].Type == GNUVersionRequirementSection
 }
 
-// Parses and returns a chain of ELF32VersionAux structures, with the first
+// Parses and returns a chain of ELF32VersionNeedAux structures, with the first
 // structure starting at the given offset in a section's content. Requires the
 // number of version aux structures to expect.
-func (f *ELF32File) parseVersionAux(content []byte, firstOffset int64,
-	count uint16) ([]ELF32VersionAux, error) {
+func (f *ELF32File) parseVersionNeedAux(content []byte, firstOffset int64,
+	count uint16) ([]ELF32VersionNeedAux, error) {
 	data := bytes.NewReader(content)
 	_, e := data.Seek(firstOffset, io.SeekStart)
 	if e != nil {
 		return nil, fmt.Errorf("Failed seeking first version aux: %s", e)
 	}
-	toReturn := make([]ELF32VersionAux, 0, count)
+	toReturn := make([]ELF32VersionNeedAux, 0, count)
 	// Like ParseVersionRequirementSection, we need to get these 1 at a time.
-	var current ELF32VersionAux
+	var current ELF32VersionNeedAux
 	var startOffset int64
 	for count > 0 {
 		startOffset, e = data.Seek(0, io.SeekCurrent)
@@ -806,7 +813,7 @@ func (f *ELF32File) parseVersionAux(content []byte, firstOffset int64,
 		}
 		e = binary.Read(data, f.Endianness, &current)
 		if e != nil {
-			return nil, fmt.Errorf("Failed parsing aux struct: %s", e)
+			return nil, fmt.Errorf("Failed parsing req. aux struct: %s", e)
 		}
 		toReturn = append(toReturn, current)
 		_, e = data.Seek(startOffset+int64(current.Next), io.SeekStart)
@@ -836,24 +843,22 @@ func (f *ELF32File) getVersionDependencyTableSize() (uint32, error) {
 	if entries == nil {
 		return 0, fmt.Errorf("Couldn't find the dynamic table section")
 	}
-	var entry *ELF32DynamicEntry
 	var toReturn uint32
 	found := false
-	for j := range entries {
-		entry = &(entries[j])
-		if entry.Tag == 0 {
+	for i := range entries {
+		if entries[i].Tag == 0 {
 			break
 		}
-		if entry.Tag != 0x6fffffff {
+		if entries[i].Tag != 0x6fffffff {
 			continue
 		}
-		toReturn = entry.Value
+		toReturn = entries[i].Value
 		found = true
 		break
 	}
 	if !found {
-		return 0, fmt.Errorf("The dynamic table didn't contain the number " +
-			"of GNU version requirements")
+		return 0, fmt.Errorf("The dynamic table didn't contain a number of " +
+			"GNU version requirements")
 	}
 	return toReturn, nil
 }
@@ -865,7 +870,7 @@ func (f *ELF32File) getVersionDependencyTableSize() (uint32, error) {
 // this function may return nil, but no error. Returns an error if the section
 // type is incorrect or couldn't be parsed for some reason.
 func (f *ELF32File) ParseVersionRequirementSection(sectionIndex uint16) (
-	[]ELF32VersionNeed, [][]ELF32VersionAux, error) {
+	[]ELF32VersionNeed, [][]ELF32VersionNeedAux, error) {
 	if !f.IsVersionRequirementSection(sectionIndex) {
 		return nil, nil, fmt.Errorf("Not a version requirement section: %d",
 			sectionIndex)
@@ -884,11 +889,11 @@ func (f *ELF32File) ParseVersionRequirementSection(sectionIndex uint16) (
 		return nil, nil, nil
 	}
 	toReturn := make([]ELF32VersionNeed, 0, entryCount)
-	auxData := make([][]ELF32VersionAux, 0, entryCount)
+	auxData := make([][]ELF32VersionNeedAux, 0, entryCount)
 	// Unlike other ELF structures, we need to read these version entries one
 	// at a time--they may not be directly adjacent.
 	var current ELF32VersionNeed
-	var currentAux []ELF32VersionAux
+	var currentAux []ELF32VersionNeedAux
 	var startOffset int64
 	var totalRead uint32
 	for {
@@ -902,11 +907,11 @@ func (f *ELF32File) ParseVersionRequirementSection(sectionIndex uint16) (
 				"Failed reading version requirement: %s", e)
 		}
 		toReturn = append(toReturn, current)
-		currentAux, e = f.parseVersionAux(content, startOffset+
+		currentAux, e = f.parseVersionNeedAux(content, startOffset+
 			int64(current.AuxOffset), current.Count)
 		if e != nil {
-			return nil, nil, fmt.Errorf("Failed parsing version aux data: %s",
-				e)
+			return nil, nil, fmt.Errorf("Failed parsing version requirement "+
+				"aux data: %s", e)
 		}
 		auxData = append(auxData, currentAux)
 		totalRead++
@@ -919,6 +924,174 @@ func (f *ELF32File) ParseVersionRequirementSection(sectionIndex uint16) (
 		if e != nil {
 			return nil, nil, fmt.Errorf(
 				"Failed seeking to next requirement: %s", e)
+		}
+	}
+	return toReturn, auxData, nil
+}
+
+// This is the analogue to the Elf32_Verdef structure, used in GNU version
+// definition sections.
+type ELF32VersionDef struct {
+	Version   uint16
+	Flags     uint16
+	Index     uint16
+	Count     uint16
+	Hash      uint32
+	AuxOffset uint32
+	Next      uint32
+}
+
+func (d *ELF32VersionDef) String() string {
+	return fmt.Sprintf("Defines version %d (symbol index %d)",
+		d.Version, d.Index)
+}
+
+// This holds an Elf32_Verdaux structure.
+type ELF32VersionDefAux struct {
+	Name uint32
+	Next uint32
+}
+
+func (d *ELF32VersionDefAux) String() string {
+	return fmt.Sprintf("Defines version with name at string table offset %d",
+		d.Name)
+}
+
+func (f *ELF32File) IsVersionDefinitionSection(sectionIndex uint16) bool {
+	if int(sectionIndex) >= len(f.Sections) {
+		return false
+	}
+	return f.Sections[sectionIndex].Type == GNUVersionDefinitionSection
+}
+
+func (f *ELF32File) getVersionDefinitionTableSize() (uint32, error) {
+	var entries []ELF32DynamicEntry
+	var e error
+	for i := range f.Sections {
+		if !f.IsDynamicSection(uint16(i)) {
+			continue
+		}
+		entries, e = f.GetDynamicTable(uint16(i))
+		if e != nil {
+			return 0, fmt.Errorf("Failed reading the dynamic table: %s", e)
+		}
+		break
+	}
+	if entries == nil {
+		return 0, fmt.Errorf("Couldn't find the dynamic table section")
+	}
+	var toReturn uint32
+	found := false
+	for i := range entries {
+		if entries[i].Tag == 0 {
+			break
+		}
+		if entries[i].Tag != 0x6ffffffd {
+			continue
+		}
+		toReturn = entries[i].Value
+		found = true
+		break
+	}
+	if !found {
+		return 0, fmt.Errorf("The dynamic table didn't contain a number of " +
+			"GNU version definitions")
+	}
+	return toReturn, nil
+}
+
+// Parses and returns a chain of ELF32VersionDefAux structures, with the first
+// structure starting at the given offset in a section's content. Requires the
+// number of definition aux structures to expect.
+func (f *ELF32File) parseVersionDefAux(content []byte, firstOffset int64,
+	count uint16) ([]ELF32VersionDefAux, error) {
+	data := bytes.NewReader(content)
+	_, e := data.Seek(firstOffset, io.SeekStart)
+	if e != nil {
+		return nil, fmt.Errorf("Failed seeking first version aux: %s", e)
+	}
+	toReturn := make([]ELF32VersionDefAux, 0, count)
+	// Like ParseVersionDefintionSection, we need to get these 1 at a time.
+	var current ELF32VersionDefAux
+	var startOffset int64
+	for count > 0 {
+		startOffset, e = data.Seek(0, io.SeekCurrent)
+		if e != nil {
+			return nil, fmt.Errorf("Failed getting current offset: %s", e)
+		}
+		e = binary.Read(data, f.Endianness, &current)
+		if e != nil {
+			return nil, fmt.Errorf("Failed parsing defn. aux struct: %s", e)
+		}
+		toReturn = append(toReturn, current)
+		_, e = data.Seek(startOffset+int64(current.Next), io.SeekStart)
+		if e != nil {
+			return nil, fmt.Errorf("Failed seeking to next aux struct: %s", e)
+		}
+		count--
+	}
+	return toReturn, nil
+}
+
+// This parses a GNU version definition section with the given index. Returns
+// a slice of version definition structs, and a slice of auxiliary structures
+// corresponding to each definition. This behaves similarly to
+// ParseVersionRequirementSection().
+func (f *ELF32File) ParseVersionDefinitionSection(sectionIndex uint16) (
+	[]ELF32VersionDef, [][]ELF32VersionDefAux, error) {
+	if !f.IsVersionDefinitionSection(sectionIndex) {
+		return nil, nil, fmt.Errorf("Not a version definition section: %d",
+			sectionIndex)
+	}
+	content, e := f.GetSectionContent(sectionIndex)
+	if e != nil {
+		return nil, nil, fmt.Errorf(
+			"Failed reading version definition section: %s", e)
+	}
+	data := bytes.NewReader(content)
+	entryCount, e := f.getVersionDefinitionTableSize()
+	if e != nil {
+		return nil, nil, e
+	}
+	if entryCount == 0 {
+		return nil, nil, nil
+	}
+	toReturn := make([]ELF32VersionDef, 0, entryCount)
+	auxData := make([][]ELF32VersionDefAux, 0, entryCount)
+	// Like with version requirements, we need to read these entires one at a
+	// time.
+	var current ELF32VersionDef
+	var currentAux []ELF32VersionDefAux
+	var startOffset int64
+	var totalRead uint32
+	for {
+		startOffset, e = data.Seek(0, io.SeekCurrent)
+		if e != nil {
+			return nil, nil, fmt.Errorf("Failed getting current offset: %s", e)
+		}
+		e = binary.Read(data, f.Endianness, &current)
+		if e != nil {
+			return nil, nil, fmt.Errorf(
+				"Failed reading version definition: %s", e)
+		}
+		toReturn = append(toReturn, current)
+		currentAux, e = f.parseVersionDefAux(content, startOffset+
+			int64(current.AuxOffset), current.Count)
+		if e != nil {
+			return nil, nil, fmt.Errorf("Failed parsing version definition "+
+				"aux data: %s", e)
+		}
+		auxData = append(auxData, currentAux)
+		totalRead++
+		if totalRead >= entryCount {
+			break
+		}
+		// The Next field contains an offset relative to the start of the
+		// version need structure.
+		_, e = data.Seek(startOffset+int64(current.Next), io.SeekStart)
+		if e != nil {
+			return nil, nil, fmt.Errorf(
+				"Failed seeking to next definition: %s", e)
 		}
 	}
 	return toReturn, auxData, nil
