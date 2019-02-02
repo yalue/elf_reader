@@ -43,7 +43,7 @@ func TestELF32Hash(t *testing.T) {
 	data := []byte{}
 	hash := ELF32Hash(data)
 	if hash != 0 {
-		t.Logf("Got has of 0x%08x for no data (expected 0).\n", hash)
+		t.Logf("Got hash of 0x%08x for no data (expected 0).\n", hash)
 		t.Fail()
 	}
 	data = []byte("Hi there lol")

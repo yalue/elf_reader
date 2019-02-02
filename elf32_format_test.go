@@ -147,7 +147,7 @@ func TestParseDynamicTable(t *testing.T) {
 		}
 		found = true
 		if entries[len(entries)-1].Tag != 0 {
-			t.Logf("The last dynamic entry tag wasn't 0.\n", e)
+			t.Logf("The last dynamic entry tag wasn't 0.\n")
 			t.Fail()
 		}
 		for j := range entries {

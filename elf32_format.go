@@ -158,9 +158,9 @@ func (ht SectionHeaderType) String() string {
 	t := uint32(ht)
 	switch t {
 	case NullSection:
-		return "unused section"
+		return "unused"
 	case BitsSection:
-		return "bits section"
+		return "bits"
 	case SymbolTableSection:
 		return "symbol table"
 	case StringTableSection:
@@ -172,13 +172,13 @@ func (ht SectionHeaderType) String() string {
 	case DynamicLinkingTableSection:
 		return "dynamic linking table"
 	case NoteSection:
-		return "note section"
+		return "note"
 	case UninitializedSection:
 		return "uninitialized memory"
 	case RelSection:
 		return "relocation entries"
 	case ReservedSection:
-		return "reserved section"
+		return "reserved"
 	case DynamicLoaderSymbolSection:
 		return "dynamic loader symbol table"
 	case GNUHashSection:
