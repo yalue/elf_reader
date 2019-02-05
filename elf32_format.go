@@ -1179,11 +1179,10 @@ func (f *ELF32File) ReparseData() error {
 		return e
 	}
 	return nil
-
 }
 
 // Attempts to parse the given data buffer as a 32-bit ELF file. Returns an
-// error if the file isn't a 32-bit, little-endian ELF.
+// error if the file isn't a 32-bit ELF.
 func ParseELF32File(raw []byte) (*ELF32File, error) {
 	var toReturn ELF32File
 	toReturn.Raw = raw

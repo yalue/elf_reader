@@ -250,6 +250,8 @@ func printGNUVersionDefinitions(f *elf_reader.ELF32File) error {
 }
 
 func run() int {
+	// TODO: Add 64-bit ELF support to elf_view, after a unified interface for
+	// both 32 and 64-bit versions is added.
 	var inputFile string
 	var showSections, showSegments, showSymbols, showStrings,
 		showRelocations, showDynamic, showRequirements,

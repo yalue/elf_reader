@@ -9,8 +9,9 @@ standard library already includes ELF-related functions, but these do not
 include some useful functionality for displaying or accessing some aspects of
 ELF files out-of-the-box.
 
-This library supports both big and little-endian 32-bit ELF files for now. In
-the future, 64-bit support will probably be added.
+This library supports both big and little-endian 32-bit ELF files for now.
+Support for 64-bit ELF files is in progress, but for now only basic 64-bit ELF
+parsing is implemented.
 
 Usage
 -----
