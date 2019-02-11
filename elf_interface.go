@@ -13,10 +13,10 @@ import (
 // instances of *ELF64File or *ELF32File.
 type ELFFile interface {
 	// Returns the number of sections defined in the ELF file.
-	GetSectionCount() (uint16, error)
+	GetSectionCount() uint16
 	// Returns the number of segments (program headers) defined in the ELF
 	// file.
-	GetSegmentCount() (uint16, error)
+	GetSegmentCount() uint16
 	// Returns the name of the section at the given index.
 	GetSectionName(index uint16) (string, error)
 	// Returns the content of the section at the given index.
@@ -52,20 +52,20 @@ type ELFFile interface {
 	DynamicEntries(intex uint16) ([]ELFDynamicEntry, error)
 }
 
-func (f *ELF64File) GetSectionCount() (uint16, error) {
-	return uint16(len(f.Sections)), nil
+func (f *ELF64File) GetSectionCount() uint16 {
+	return f.Header.SectionHeaderEntries
 }
 
-func (f *ELF32File) GetSectionCount() (uint16, error) {
-	return uint16(len(f.Sections)), nil
+func (f *ELF32File) GetSectionCount() uint16 {
+	return f.Header.SectionHeaderEntries
 }
 
-func (f *ELF64File) GetSegmentCount() (uint16, error) {
-	return uint16(len(f.Segments)), nil
+func (f *ELF64File) GetSegmentCount() uint16 {
+	return f.Header.ProgramHeaderEntries
 }
 
-func (f *ELF32File) GetSegmentCount() (uint16, error) {
-	return uint16(len(f.Segments)), nil
+func (f *ELF32File) GetSegmentCount() uint16 {
+	return f.Header.ProgramHeaderEntries
 }
 
 func (f *ELF64File) GetSectionHeader(index uint16) (ELFSectionHeader, error) {

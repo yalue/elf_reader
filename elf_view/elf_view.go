@@ -14,10 +14,11 @@ import (
 	"os"
 )
 
-func printSections(f *elf_reader.ELF32File) error {
+func printSections(f elf_reader.ELFFile) error {
 	var name string
 	var e error
-	for i := range f.Sections {
+	count := f.GetSectionCount()
+	for i := uint16(0); i < count; i++ {
 		if i != 0 {
 			name, e = f.GetSectionName(uint16(i))
 		} else {
@@ -26,20 +27,30 @@ func printSections(f *elf_reader.ELF32File) error {
 		if e != nil {
 			return fmt.Errorf("Error getting section %d name: %s", i, e)
 		}
-		log.Printf("%d. %s: %s\n", i, name, &(f.Sections[i]))
+		header, e := f.GetSectionHeader(i)
+		if e != nil {
+			return fmt.Errorf("Error getting section %d header: %s", i, e)
+		}
+		log.Printf("%d. %s: %s\n", i, name, header)
 	}
 	return nil
 }
 
-func printSegments(f *elf_reader.ELF32File) error {
-	for i := range f.Segments {
-		log.Printf("%d. %s\n", i, &(f.Segments[i]))
+func printSegments(f elf_reader.ELFFile) error {
+	count := f.GetSegmentCount()
+	for i := uint16(0); i < count; i++ {
+		header, e := f.GetProgramHeader(i)
+		if e != nil {
+			return fmt.Errorf("Error getting segment %d header: %s", i, e)
+		}
+		log.Printf("%d. %s\n", i, header)
 	}
 	return nil
 }
 
-func printSymbols(f *elf_reader.ELF32File) error {
-	for i := range f.Sections {
+func printSymbols(f elf_reader.ELFFile) error {
+	count := f.GetSectionCount()
+	for i := uint16(0); i < count; i++ {
 		if !f.IsSymbolTable(uint16(i)) {
 			continue
 		}
@@ -47,20 +58,21 @@ func printSymbols(f *elf_reader.ELF32File) error {
 		if e != nil {
 			return fmt.Errorf("Error getting symbol table name: %s", e)
 		}
-		symbols, names, e := f.GetSymbolTable(uint16(i))
+		symbols, names, e := f.GetSymbols(uint16(i))
 		if e != nil {
 			return fmt.Errorf("Couldn't read symbol table: %s", e)
 		}
 		log.Printf("%d symbols in section %s:\n", len(symbols), name)
 		for j := range symbols {
-			log.Printf("  %d. %s: %s\n", j, names[j], &(symbols[j]))
+			log.Printf("  %d. %s: %s\n", j, names[j], symbols[j])
 		}
 	}
 	return nil
 }
 
-func printStrings(f *elf_reader.ELF32File) error {
-	for i := range f.Sections {
+func printStrings(f elf_reader.ELFFile) error {
+	count := f.GetSectionCount()
+	for i := uint16(0); i < count; i++ {
 		if !f.IsStringTable(uint16(i)) {
 			continue
 		}
@@ -80,8 +92,9 @@ func printStrings(f *elf_reader.ELF32File) error {
 	return nil
 }
 
-func printRelocations(f *elf_reader.ELF32File) error {
-	for i := range f.Sections {
+func printRelocations(f elf_reader.ELFFile) error {
+	count := f.GetSectionCount()
+	for i := uint16(0); i < count; i++ {
 		if !f.IsRelocationTable(uint16(i)) {
 			continue
 		}
@@ -89,7 +102,7 @@ func printRelocations(f *elf_reader.ELF32File) error {
 		if e != nil {
 			return fmt.Errorf("Error getting relocation table name: %s", e)
 		}
-		relocations, e := f.GetRelocationTable(uint16(i))
+		relocations, e := f.GetRelocations(uint16(i))
 		if e != nil {
 			return fmt.Errorf("Couldn't read relocation table: %s", e)
 		}
@@ -101,10 +114,11 @@ func printRelocations(f *elf_reader.ELF32File) error {
 	return nil
 }
 
-func printDynamicLinkingTable(f *elf_reader.ELF32File) error {
+func printDynamicLinkingTable(f elf_reader.ELFFile) error {
 	var sectionIndex uint16
 	var e error
-	for i := range f.Sections {
+	count := f.GetSectionCount()
+	for i := uint16(0); i < count; i++ {
 		if !f.IsDynamicSection(uint16(i)) {
 			continue
 		}
@@ -120,34 +134,37 @@ func printDynamicLinkingTable(f *elf_reader.ELF32File) error {
 		return fmt.Errorf("Failed getting dynamic table section name: %s",
 			e)
 	}
-	entries, e := f.GetDynamicTable(sectionIndex)
+	entries, e := f.DynamicEntries(sectionIndex)
 	if e != nil {
 		return fmt.Errorf("Failed parsing the dynamic section: %s", e)
 	}
 	log.Printf("Dynamic linking table in section %s:\n", name)
-	stringContent, e := f.GetSectionContent(
-		uint16(f.Sections[sectionIndex].LinkedIndex))
+	header, e := f.GetSectionHeader(sectionIndex)
+	if e != nil {
+		return fmt.Errorf("Failed getting .dynamic section header: %s", e)
+	}
+	stringContent, e := f.GetSectionContent(uint16(header.GetLinkedIndex()))
 	if e != nil {
 		return fmt.Errorf("Failed getting strings for dynamic section: %s", e)
 	}
 	var stringValue []byte
 	for i := range entries {
-		entry := &(entries[i])
+		entry := entries[i]
 		// If the tag indicates a string value, we'll print the string instead
 		// of the default format.
-		switch entry.Tag {
+		switch entry.GetTag().GetValue() {
 		case 1, 14, 15:
-			stringValue, e = elf_reader.ReadStringAtOffset(entry.Value,
-				stringContent)
+			stringValue, e = elf_reader.ReadStringAtOffset(
+				uint32(entry.GetValue()), stringContent)
 			if e != nil {
 				return fmt.Errorf("Failed getting string value for tag %s: %s",
-					entry.Tag, e)
+					entry.GetTag(), e)
 			}
-			log.Printf("  %d. %s: %s\n", i, entry.Tag, stringValue)
+			log.Printf("  %d. %s: %s\n", i, entry.GetTag(), stringValue)
 		default:
 			log.Printf("  %d. %s\n", i, entry)
 		}
-		if entry.Tag == 0 {
+		if entry.GetTag().GetValue() == 0 {
 			break
 		}
 	}
@@ -250,8 +267,6 @@ func printGNUVersionDefinitions(f *elf_reader.ELF32File) error {
 }
 
 func run() int {
-	// TODO: Add 64-bit ELF support to elf_view, after a unified interface for
-	// both 32 and 64-bit versions is added.
 	var inputFile string
 	var showSections, showSegments, showSymbols, showStrings,
 		showRelocations, showDynamic, showRequirements,
@@ -288,7 +303,7 @@ func run() int {
 		log.Printf("Failed reading input file: %s\n", e)
 		return 1
 	}
-	elf, e := elf_reader.ParseELF32File(rawInput)
+	elf, e := elf_reader.ParseELFFile(rawInput)
 	if e != nil {
 		log.Printf("Failed parsing the input file: %s\n", e)
 		return 1
@@ -351,9 +366,15 @@ func run() int {
 			return 1
 		}
 	}
+	// The following functionality is only implemented for 32-bit ELF files for
+	// now.
+	elf32, ok := elf.(*elf_reader.ELF32File)
+	if !ok {
+		return 0
+	}
 	if showRequirements {
 		log.Println("==== GNU version requirements ====")
-		e = printGNUVersionRequirements(elf)
+		e = printGNUVersionRequirements(elf32)
 		if e != nil {
 			log.Printf("Error printing GNU version requirements: %s\n", e)
 			return 1
@@ -361,7 +382,7 @@ func run() int {
 	}
 	if showDefinitions {
 		log.Println("==== GNU version definitions ====")
-		e = printGNUVersionDefinitions(elf)
+		e = printGNUVersionDefinitions(elf32)
 		if e != nil {
 			log.Printf("Error printing GNU version definitions: %s\n", e)
 			return 1
