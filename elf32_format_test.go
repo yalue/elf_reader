@@ -61,7 +61,7 @@ func TestParseELF32File(t *testing.T) {
 	}
 }
 
-func TestParseSymbols(t *testing.T) {
+func TestParseSymbols32(t *testing.T) {
 	f := parseTestELF32("test_data/sleep_arm32", t)
 	// Test reading the .dynsym section
 	found := false
@@ -97,7 +97,7 @@ func TestParseSymbols(t *testing.T) {
 	}
 }
 
-func TestParseRelocations(t *testing.T) {
+func TestParseRelocations32(t *testing.T) {
 	f := parseTestELF32("test_data/sleep_arm32", t)
 	found := false
 	for i := range f.Sections {
@@ -133,7 +133,7 @@ func TestParseRelocations(t *testing.T) {
 	}
 }
 
-func TestParseDynamicTable(t *testing.T) {
+func TestParseDynamicTable32(t *testing.T) {
 	f := parseTestELF32("test_data/sleep_arm32", t)
 	found := false
 	for i := range f.Sections {
@@ -165,7 +165,7 @@ func TestParseDynamicTable(t *testing.T) {
 	}
 }
 
-func TestParseVersionRequirements(t *testing.T) {
+func TestParseVersionRequirements32(t *testing.T) {
 	f := parseTestELF32("test_data/sleep_arm32", t)
 	found := false
 	for i := range f.Sections {
@@ -192,7 +192,7 @@ func TestParseVersionRequirements(t *testing.T) {
 	}
 }
 
-func TestParseVersionDefinitions(t *testing.T) {
+func TestParseVersionDefinitions32(t *testing.T) {
 	f := parseTestELF32("test_data/ld-linux_arm32.so", t)
 	found := false
 	for i := range f.Sections {

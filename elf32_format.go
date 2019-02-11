@@ -202,9 +202,9 @@ func (ht SectionHeaderType) String() string {
 	return fmt.Sprintf("invalid section type: 0x%x", t)
 }
 
-type SectionHeaderFlags uint32
+type SectionHeaderFlags32 uint32
 
-func (f SectionHeaderFlags) String() string {
+func (f SectionHeaderFlags32) String() string {
 	var writeStatus, allocStatus, execStatus string
 	if (f & 1) == 0 {
 		writeStatus = "not "
@@ -270,7 +270,7 @@ func (h *ELF32ProgramHeader) String() string {
 type ELF32SectionHeader struct {
 	Name           uint32
 	Type           SectionHeaderType
-	Flags          SectionHeaderFlags
+	Flags          SectionHeaderFlags32
 	VirtualAddress uint32
 	FileOffset     uint32
 	Size           uint32
@@ -372,8 +372,10 @@ func (n ELF32RelocationInfo) String() string {
 type ELF32Relocation interface {
 	// Returns the address of the relocation
 	Offset() uint32
-	// Returns the info field for the relocation
-	Info() ELF32RelocationInfo
+	// Returns the relocation's type from the info field.
+	Type() uint32
+	// Returns the symbol index from the info field.
+	SymbolIndex() uint32
 	// Returns the addent field for the relocation, or 0 if the relocation
 	// did not include an addend.
 	Addend() int32
@@ -386,21 +388,25 @@ type ELF32Rel struct {
 	RelocationInfo ELF32RelocationInfo
 }
 
-func (e *ELF32Rel) Offset() uint32 {
-	return e.Address
+func (r *ELF32Rel) Offset() uint32 {
+	return r.Address
 }
 
-func (e *ELF32Rel) Info() ELF32RelocationInfo {
-	return e.RelocationInfo
+func (r *ELF32Rel) Type() uint32 {
+	return uint32(r.RelocationInfo.Type())
 }
 
-func (e *ELF32Rel) Addend() int32 {
+func (r *ELF32Rel) SymbolIndex() uint32 {
+	return r.RelocationInfo.SymbolIndex()
+}
+
+func (r *ELF32Rel) Addend() int32 {
 	return 0
 }
 
-func (e *ELF32Rel) String() string {
-	return fmt.Sprintf("relocation at address 0x%08x, %s", e.Address,
-		e.RelocationInfo)
+func (r *ELF32Rel) String() string {
+	return fmt.Sprintf("relocation at address 0x%08x, %s", r.Address,
+		r.RelocationInfo)
 }
 
 // A relocation with an addend. Also satisfies the ELF32Relocation interface.
@@ -410,21 +416,25 @@ type ELF32Rela struct {
 	AddendValue    int32
 }
 
-func (e *ELF32Rela) Offset() uint32 {
-	return e.Address
+func (r *ELF32Rela) Offset() uint32 {
+	return r.Address
 }
 
-func (e *ELF32Rela) Info() ELF32RelocationInfo {
-	return e.RelocationInfo
+func (r *ELF32Rela) Type() uint32 {
+	return uint32(r.RelocationInfo.Type())
 }
 
-func (e *ELF32Rela) Addend() int32 {
-	return e.AddendValue
+func (r *ELF32Rela) SymbolIndex() uint32 {
+	return r.RelocationInfo.SymbolIndex()
 }
 
-func (e *ELF32Rela) String() string {
+func (r *ELF32Rela) Addend() int32 {
+	return r.AddendValue
+}
+
+func (r *ELF32Rela) String() string {
 	return fmt.Sprintf("relocation at address 0x%08x with addend %d, %s",
-		e.Address, e.AddendValue, e.RelocationInfo)
+		r.Address, r.AddendValue, r.RelocationInfo)
 }
 
 // Tracks parsed data for a 32-bit ELF.
@@ -598,14 +608,15 @@ func (f *ELF32File) GetRelocationTable(sectionIndex uint16) ([]ELF32Relocation,
 	data := bytes.NewReader(content)
 	if header.Type == RelaSection {
 		entryCount := int(header.Size) / binary.Size(&ELF32Rela{})
-		// Supposedly slices of structs satisfying an interface can't be
-		// returned as a slice of the interface? That's why we need to convert
-		// to a slice of pointers which do satisfy the interface.
 		toReturnData := make([]ELF32Rela, entryCount)
 		e = binary.Read(data, f.Endianness, toReturnData)
 		if e != nil {
 			return nil, fmt.Errorf("Failed parsing rela table: %s", e)
 		}
+		// Unfortunately, a slice of structs doesn't equal a slice of
+		// relocation interfaces because the interface is implemented on top of
+		// the struct pointer rather than the struct itself. So get an array of
+		// pointers instead.
 		toReturn := make([]ELF32Relocation, entryCount)
 		for i := range toReturnData {
 			toReturn[i] = &(toReturnData[i])
