@@ -12,6 +12,12 @@ import (
 // can use type assertions to convert instances of this interface into either
 // instances of *ELF64File or *ELF32File.
 type ELFFile interface {
+	// Returns the value specified in the ELF header of whether the ELF file is
+	// an executable, relocatable, shared, or core file.
+	GetFileType() ELFFileType
+	// Returns the value specified in the ELF header of the type of machine
+	// this file targets.
+	GetMachineType() MachineType
 	// Returns the number of sections defined in the ELF file.
 	GetSectionCount() uint16
 	// Returns the number of segments (program headers) defined in the ELF
@@ -50,6 +56,22 @@ type ELFFile interface {
 	// the section size, so callers must check for the terminating null entry
 	// when referring to the returned slice.
 	DynamicEntries(intex uint16) ([]ELFDynamicEntry, error)
+}
+
+func (f *ELF64File) GetFileType() ELFFileType {
+	return f.Header.Type
+}
+
+func (f *ELF32File) GetFileType() ELFFileType {
+	return f.Header.Type
+}
+
+func (f *ELF64File) GetMachineType() MachineType {
+	return f.Header.Machine
+}
+
+func (f *ELF32File) GetMachineType() MachineType {
+	return f.Header.Machine
 }
 
 func (f *ELF64File) GetSectionCount() uint16 {

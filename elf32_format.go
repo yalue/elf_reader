@@ -35,6 +35,7 @@ const (
 	MachineTypeARM               = 0x28
 	MachineTypeAMD64             = 0x3e
 	MachineTypeARM64             = 0xb7
+	MachineTypeAMDGPU            = 0xe0
 	NullSegment                  = 0
 	LoadableSegment              = 1
 	DynamicLinkingSegment        = 2
@@ -96,6 +97,8 @@ func (t MachineType) String() string {
 		return "AMD64"
 	case MachineTypeARM64:
 		return "ARM64"
+	case MachineTypeAMDGPU:
+		return "AMD GPU"
 	}
 	return fmt.Sprintf("unknown machine type: 0x%02x", uint16(t))
 }

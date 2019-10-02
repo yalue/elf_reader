@@ -318,6 +318,7 @@ func run() int {
 		return 0
 	}
 	log.Printf("Successfully parsed file %s\n", inputFile)
+	log.Printf("It is a %s for %s\n", elf.GetFileType(), elf.GetMachineType())
 	if showSections {
 		log.Println("==== Sections ====")
 		e = printSections(elf)
