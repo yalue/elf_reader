@@ -60,7 +60,7 @@ func (f SectionHeaderFlags64) String() string {
 		allocStatus = "not "
 	}
 	if (f & 4) == 0 {
-		allocStatus = "not "
+		execStatus = "not "
 	}
 	return fmt.Sprintf("%swritable, %sallocated, %sexecutable", writeStatus,
 		allocStatus, execStatus)
