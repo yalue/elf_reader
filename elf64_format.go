@@ -103,7 +103,7 @@ type ELF64File struct {
 // Returns the bytes of the section at the given index, or an error if one
 // occurs.
 func (f *ELF64File) GetSectionContent(sectionIndex uint16) ([]byte, error) {
-	if int(sectionIndex) > len(f.Sections) {
+	if int(sectionIndex) >= len(f.Sections) {
 		return nil, fmt.Errorf("Invalid section index: %d", sectionIndex)
 	}
 	start := f.Sections[sectionIndex].FileOffset
@@ -450,6 +450,12 @@ func (f *ELF64File) parseProgramHeaders() error {
 
 // Used during initialization to fill in the Sections slice.
 func (f *ELF64File) parseSectionHeaders() error {
+	// Don't require a valid section header offset if there are no sections.
+	if f.Header.SectionHeaderEntries == 0 {
+		f.Sections = nil
+		return nil
+	}
+
 	offset := f.Header.SectionHeaderOffset
 	if offset >= uint64(len(f.Raw)) {
 		return fmt.Errorf("Invalid section header offset: 0x%x", offset)
