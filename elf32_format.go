@@ -265,8 +265,9 @@ type ELF32ProgramHeader struct {
 
 func (h *ELF32ProgramHeader) String() string {
 	return fmt.Sprintf("%s segment at address 0x%x (offset 0x%x in file). "+
-		"%d bytes in memory, %d in the file. %s", h.Type, h.VirtualAddress,
-		h.FileOffset, h.MemorySize, h.FileSize, h.Flags)
+		"%d bytes in memory, %d in the file, alignment 0x%x. %s", h.Type,
+		h.VirtualAddress, h.FileOffset, h.MemorySize, h.FileSize, h.Align,
+		h.Flags)
 }
 
 // Specifies the format for a single entry for a 32-bit ELF section header.

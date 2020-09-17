@@ -2,7 +2,7 @@
 // of objdump and readelf, but is probably less complete. It exists primarily
 // to facilitate testing of the elf_reader package.
 //
-// Example usage: ./elf_view -file <elf_file> -show_sections
+// Example usage: ./elf_view -file <elf_file> -sections -segments
 package main
 
 import (
