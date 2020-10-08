@@ -118,6 +118,23 @@ func (f *ELF64File) GetSectionContent(sectionIndex uint16) ([]byte, error) {
 	return f.Raw[start:end], nil
 }
 
+// Returns the bytes of the segment at the given index, or an error if one
+// occurs.
+func (f *ELF64File) GetSegmentContent(segmentIndex uint16) ([]byte, error) {
+	if int(segmentIndex) > len(f.Segments) {
+		return nil, fmt.Errorf("Invalid segment index: %d", segmentIndex)
+	}
+	start := f.Segments[segmentIndex].FileOffset
+	if start > uint64(len(f.Raw)) {
+		return nil, fmt.Errorf("Bad file offset for segment %d", segmentIndex)
+	}
+	end := start + f.Segments[segmentIndex].FileSize
+	if (end > uint64(len(f.Raw))) || (end < start) {
+		return nil, fmt.Errorf("Bad size for segment %d", segmentIndex)
+	}
+	return f.Raw[start:end], nil
+}
+
 // Returns the name of the section at the given index in the section table, or
 // an error if one occurs.
 func (f *ELF64File) GetSectionName(sectionIndex uint16) (string, error) {

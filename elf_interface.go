@@ -27,6 +27,8 @@ type ELFFile interface {
 	GetSectionName(index uint16) (string, error)
 	// Returns the content of the section at the given index.
 	GetSectionContent(index uint16) ([]byte, error)
+	// Returns the content of the segment at the given index.
+	GetSegmentContent(index uint16) ([]byte, error)
 	// Returns an interface that can be used to access the header metadata for
 	// the section at the given index.
 	GetSectionHeader(index uint16) (ELFSectionHeader, error)

@@ -467,6 +467,23 @@ func (f *ELF32File) GetSectionContent(sectionIndex uint16) ([]byte, error) {
 	return f.Raw[start:end], nil
 }
 
+// Returns the bytes of the segment at the given index, or an error if one
+// occurs.
+func (f *ELF32File) GetSegmentContent(segmentIndex uint16) ([]byte, error) {
+	if int(segmentIndex) > len(f.Segments) {
+		return nil, fmt.Errorf("Invalid segment index: %d", segmentIndex)
+	}
+	start := f.Segments[segmentIndex].FileOffset
+	if uint64(start) > uint64(len(f.Raw)) {
+		return nil, fmt.Errorf("Bad file offset for segment %d", segmentIndex)
+	}
+	end := start + f.Segments[segmentIndex].FileSize
+	if (uint64(end) > uint64(len(f.Raw))) || (end < start) {
+		return nil, fmt.Errorf("Bad size for segment %d", segmentIndex)
+	}
+	return f.Raw[start:end], nil
+}
+
 // Returns the string at the given offset in the string table contained in the
 // section at the given section index. Returns an error if one occurs.
 func (f *ELF32File) ReadStringTable(sectionIndex uint16, offset uint32) (

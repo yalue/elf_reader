@@ -36,6 +36,46 @@ func printSections(f elf_reader.ELFFile) error {
 	return nil
 }
 
+func printSectionHeaderOffsets(f elf_reader.ELFFile) error {
+	var offset uint64
+	var headerSize uint64
+	count := f.GetSectionCount()
+	elf32File, ok := f.(*elf_reader.ELF32File)
+	if ok {
+		headerSize = uint64(elf32File.Header.SectionHeaderEntrySize)
+		offset = uint64(elf32File.Header.SectionHeaderOffset)
+	} else {
+		elf64File := f.(*elf_reader.ELF64File)
+		headerSize = uint64(elf64File.Header.SectionHeaderEntrySize)
+		offset = uint64(elf64File.Header.SectionHeaderOffset)
+	}
+	for i := 0; i < int(count); i++ {
+		log.Printf("Section header %d's offset in file: 0x%x\n", i, offset)
+		offset += headerSize
+	}
+	return nil
+}
+
+func printProgramHeaderOffsets(f elf_reader.ELFFile) error {
+	var offset uint64
+	var headerSize uint64
+	count := f.GetSegmentCount()
+	elf32File, ok := f.(*elf_reader.ELF32File)
+	if ok {
+		headerSize = uint64(elf32File.Header.ProgramHeaderEntrySize)
+		offset = uint64(elf32File.Header.ProgramHeaderOffset)
+	} else {
+		elf64File := f.(*elf_reader.ELF64File)
+		headerSize = uint64(elf64File.Header.ProgramHeaderEntrySize)
+		offset = uint64(elf64File.Header.ProgramHeaderOffset)
+	}
+	for i := 0; i < int(count); i++ {
+		log.Printf("Program header %d's offset in file: 0x%x\n", i, offset)
+		offset += headerSize
+	}
+	return nil
+}
+
 func printSegments(f elf_reader.ELFFile) error {
 	count := f.GetSegmentCount()
 	for i := uint16(0); i < count; i++ {
@@ -270,8 +310,9 @@ func run() int {
 	var inputFile string
 	var showSections, showSegments, showSymbols, showStrings,
 		showRelocations, showDynamic, showRequirements,
-		showDefinitions bool
-	var dumpSection int
+		showDefinitions, showSectionHeaderOffsets,
+		showProgramHeaderOffsets bool
+	var dumpSection, dumpSegment int
 	flag.StringVar(&inputFile, "file", "",
 		"The path to the input ELF file. This is required.")
 	flag.BoolVar(&showSections, "sections", false,
@@ -290,9 +331,19 @@ func run() int {
 		"Prints a list of the GNU version requirements if set.")
 	flag.BoolVar(&showDefinitions, "definitions", false,
 		"Prints a list of GNU version definitions if set.")
+	flag.BoolVar(&showSectionHeaderOffsets, "section_header_offsets", false,
+		"Prints a list of the offsets of the section headers in the file if "+
+			"set.")
+	flag.BoolVar(&showProgramHeaderOffsets, "program_header_offsets", false,
+		"Prints a list of the offsets of the program headers in the file if "+
+			"set.")
 	flag.IntVar(&dumpSection, "dump_section", -1,
 		"If a valid section index is provided, binary contents of the section"+
 			" will be dumped to stdout and other output will be surpressed.")
+	flag.IntVar(&dumpSegment, "dump_segment", -1,
+		"If a valid segment index is provided, binary contents of the segment"+
+			" will be dumped to stdout and other output will be surpressed. "+
+			"Ignored in favor of -dump_section if -dump_section is provided.")
 	flag.Parse()
 	if inputFile == "" {
 		log.Println("Invalid arguments. Run with -help for more information.")
@@ -312,6 +363,15 @@ func run() int {
 		content, e := elf.GetSectionContent(uint16(dumpSection))
 		if e != nil {
 			log.Printf("Failed dumping section contents: %s\n", e)
+			return 1
+		}
+		log.Printf("%s", content)
+		return 0
+	}
+	if dumpSegment != -1 {
+		content, e := elf.GetSegmentContent(uint16(dumpSegment))
+		if e != nil {
+			log.Printf("Failed dumping segment contents: %s\n", e)
 			return 1
 		}
 		log.Printf("%s", content)
@@ -367,6 +427,22 @@ func run() int {
 			return 1
 		}
 	}
+	if showSectionHeaderOffsets {
+		log.Println("==== Section header offsets ====")
+		e = printSectionHeaderOffsets(elf)
+		if e != nil {
+			log.Printf("Error printing the section header offsets: %s\n", e)
+			return 1
+		}
+	}
+	if showProgramHeaderOffsets {
+		log.Println("==== Program header offsets ====")
+		e = printProgramHeaderOffsets(elf)
+		if e != nil {
+			log.Printf("Error printing the program header offsets: %s\n", e)
+			return 1
+		}
+	}
 	// The following functionality is only implemented for 32-bit ELF files for
 	// now.
 	elf32, ok := elf.(*elf_reader.ELF32File)
@@ -389,6 +465,7 @@ func run() int {
 			return 1
 		}
 	}
+
 	return 0
 }
 
