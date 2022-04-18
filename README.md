@@ -28,13 +28,13 @@ information from an ELF file, see the command-line tool at
 import (
 	"fmt"
 	"github.com/yalue/elf_reader"
-	"io/ioutil"
+	"os"
 )
 
 func main() {
 	// Print the section names in /bin/bash. This code will work on both 32-bit
 	// and 64-bit systems.
-	raw, e := ioutil.ReadFile("/bin/bash")
+	raw, e := os.ReadFile("/bin/bash")
 	if e != nil {
 		fmt.Printf("Failed reading /bin/bash: %s\n", e)
 		return

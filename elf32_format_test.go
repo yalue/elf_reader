@@ -1,20 +1,13 @@
 package elf_reader
 
 import (
-	"io/ioutil"
 	"os"
 	"testing"
 )
 
 // Returns the content of the file with the given name.
 func fileBytes(filename string, t *testing.T) []byte {
-	f, e := os.Open(filename)
-	if e != nil {
-		t.Logf("Failed opening file: %s\n", e)
-		t.FailNow()
-	}
-	toReturn, e := ioutil.ReadAll(f)
-	f.Close()
+	toReturn, e := os.ReadFile(filename)
 	if e != nil {
 		t.Logf("Failed reading file: %s\n", e)
 		t.FailNow()

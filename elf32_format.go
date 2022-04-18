@@ -2,7 +2,7 @@
 //
 // Example usage, printing section names:
 //
-//    raw, e := ioutil.ReadFile("/bin/bash")
+//    raw, e := os.ReadFile("/bin/bash")
 //    // if e != nil {...}
 //    elf, e = elf_reader.ParseELF32File(raw)
 //    // if e != nil {...}

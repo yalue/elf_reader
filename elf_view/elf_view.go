@@ -9,7 +9,6 @@ import (
 	"flag"
 	"fmt"
 	"github.com/yalue/elf_reader"
-	"io/ioutil"
 	"log"
 	"os"
 )
@@ -349,7 +348,7 @@ func run() int {
 		log.Println("Invalid arguments. Run with -help for more information.")
 		return 1
 	}
-	rawInput, e := ioutil.ReadFile(inputFile)
+	rawInput, e := os.ReadFile(inputFile)
 	if e != nil {
 		log.Printf("Failed reading input file: %s\n", e)
 		return 1
