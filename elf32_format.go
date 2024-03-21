@@ -2,17 +2,17 @@
 //
 // Example usage, printing section names:
 //
-//    raw, e := os.ReadFile("/bin/bash")
-//    // if e != nil {...}
-//    elf, e = elf_reader.ParseELF32File(raw)
-//    // if e != nil {...}
-//    for i := range elf.Sections {
-//        if i != 0 {
-//            name, e := elf.GetSectionName(uint16(i))
-//            // if e != nil {...}
-//            fmt.Printf("Section %d: %s", i, name)
-//        }
-//    }
+//	raw, e := os.ReadFile("/bin/bash")
+//	// if e != nil {...}
+//	elf, e = elf_reader.ParseELF32File(raw)
+//	// if e != nil {...}
+//	for i := range elf.Sections {
+//	    if i != 0 {
+//	        name, e := elf.GetSectionName(uint16(i))
+//	        // if e != nil {...}
+//	        fmt.Printf("Section %d: %s", i, name)
+//	    }
+//	}
 package elf_reader
 
 import (
@@ -457,12 +457,14 @@ func (f *ELF32File) GetSectionContent(sectionIndex uint16) ([]byte, error) {
 		return nil, fmt.Errorf("Invalid section index: %d", sectionIndex)
 	}
 	start := f.Sections[sectionIndex].FileOffset
-	if int(start) > len(f.Raw) {
-		return nil, fmt.Errorf("Bad section file offset")
+	if (int(start) < 0) || (int(start) > len(f.Raw)) {
+		return nil, fmt.Errorf("Bad file offset for section %d: %d",
+			sectionIndex, start)
 	}
 	end := start + f.Sections[sectionIndex].Size
-	if int(end) > len(f.Raw) {
-		return nil, fmt.Errorf("Bad section size")
+	if (int(end) < int(start)) || (int(end) > len(f.Raw)) {
+		return nil, fmt.Errorf("Bad end offset for %d-byte section %d: %d",
+			f.Sections[sectionIndex].Size, sectionIndex, end)
 	}
 	return f.Raw[start:end], nil
 }

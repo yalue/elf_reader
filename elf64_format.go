@@ -109,11 +109,13 @@ func (f *ELF64File) GetSectionContent(sectionIndex uint16) ([]byte, error) {
 	}
 	start := f.Sections[sectionIndex].FileOffset
 	if start > uint64(len(f.Raw)) {
-		return nil, fmt.Errorf("Bad file offset for section %d", sectionIndex)
+		return nil, fmt.Errorf("Bad file offset for section %d: %d",
+			sectionIndex, start)
 	}
 	end := start + f.Sections[sectionIndex].Size
 	if (end > uint64(len(f.Raw))) || (end < start) {
-		return nil, fmt.Errorf("Bad size for section %d", sectionIndex)
+		return nil, fmt.Errorf("Bad end offset for %d-byte section %d: %d",
+			f.Sections[sectionIndex].Size, sectionIndex, end)
 	}
 	return f.Raw[start:end], nil
 }
