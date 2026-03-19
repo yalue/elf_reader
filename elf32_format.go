@@ -456,12 +456,17 @@ func (f *ELF32File) GetSectionContent(sectionIndex uint16) ([]byte, error) {
 	if int(sectionIndex) >= len(f.Sections) {
 		return nil, fmt.Errorf("Invalid section index: %d", sectionIndex)
 	}
-	start := f.Sections[sectionIndex].FileOffset
+	sectionHeader := f.Sections[sectionIndex]
+	if sectionHeader.Type == UninitializedSection {
+		return nil, fmt.Errorf("The section at index %d is for "+
+			"uninitialized memory and doesn't have contents", sectionIndex)
+	}
+	start := sectionHeader.FileOffset
 	if (int(start) < 0) || (int(start) > len(f.Raw)) {
 		return nil, fmt.Errorf("Bad file offset for section %d: %d",
 			sectionIndex, start)
 	}
-	end := start + f.Sections[sectionIndex].Size
+	end := start + sectionHeader.Size
 	if (int(end) < int(start)) || (int(end) > len(f.Raw)) {
 		return nil, fmt.Errorf("Bad end offset for %d-byte section %d: %d",
 			f.Sections[sectionIndex].Size, sectionIndex, end)

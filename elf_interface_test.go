@@ -5,26 +5,58 @@ import (
 )
 
 func TestELFInterface(t *testing.T) {
-	testFile := fileBytes("test_data/sleep_arm32", t)
-	f, e := ParseELFFile(testFile)
-	if e != nil {
-		t.Logf("Failed parsing a 32-bit ELF file: %s\n", e)
-		t.FailNow()
+	testFile := func(filename string, expectedSectionCount uint16) {
+		contents := fileBytes(filename, t)
+		f, e := ParseELFFile(contents)
+		if e != nil {
+			t.Errorf("Failed parsing %s: %s\n", filename, e)
+			return
+		}
+		if f.GetSectionCount() != expectedSectionCount {
+			t.Errorf("Expected %d sections in %s, got %d\n",
+				expectedSectionCount, filename, f.GetSectionCount())
+			return
+		}
 	}
-	if int(f.GetSectionCount()) != 30 {
-		t.Logf("Expected 30 sections in the 32-bit ELF file, got %d\n",
-			f.GetSectionCount())
-		t.Fail()
+	testFile("test_data/sleep_arm32", 30)
+	testFile("test_data/sleep_amd64", 29)
+}
+
+func TestGetBssContents(t *testing.T) {
+	testFile := func(filename string) {
+		contents := fileBytes(filename, t)
+		f, e := ParseELFFile(contents)
+		if e != nil {
+			t.Errorf("Error loading %s: %s\n", filename, e)
+			return
+		}
+		bssIdx := uint16(0xffff)
+		for i := uint16(1); i < f.GetSectionCount(); i++ {
+			name, e := f.GetSectionName(i)
+			if e != nil {
+				t.Errorf("Error getting name of section %d in %s: %s\n", i,
+					filename, e)
+				return
+			}
+			if name == ".bss" {
+				bssIdx = i
+				break
+			}
+		}
+		if bssIdx == 0xffff {
+			t.Errorf("Couldn't find index of .bss section in %s", filename)
+			return
+		}
+		_, e = f.GetSectionContent(bssIdx)
+		if e == nil {
+			t.Errorf("Didn't get expected error when reading content of " +
+				".bss section\n")
+			return
+		}
+		t.Logf("Got expected error when reading .bss section content: %s\n", e)
 	}
-	testFile = fileBytes("test_data/sleep_amd64", t)
-	f, e = ParseELFFile(testFile)
-	if e != nil {
-		t.Logf("Failed parsing a 64-bit ELF file: %s\n", e)
-		t.FailNow()
-	}
-	if int(f.GetSectionCount()) != 29 {
-		t.Logf("Expected 29 sections in the 64-bit ELF file, got %d\n",
-			f.GetSectionCount())
-		t.Fail()
-	}
+	testFile("test_data/bash32_freebsd")
+	testFile("test_data/sleep_amd64")
+	testFile("test_data/sleep_arm32")
+	testFile("test_data/ld-linux_arm32.so")
 }
