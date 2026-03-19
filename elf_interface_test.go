@@ -53,6 +53,12 @@ func TestGetBssContents(t *testing.T) {
 				".bss section\n")
 			return
 		}
+		_, ok := e.(UninitializedDataSectionError)
+		if !ok {
+			t.Errorf("The error when reading a .bss section wasn't an " +
+				"UninitializedDataSectionError.\n")
+			return
+		}
 		t.Logf("Got expected error when reading .bss section content: %s\n", e)
 	}
 	testFile("test_data/bash32_freebsd")

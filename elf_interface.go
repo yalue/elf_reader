@@ -8,6 +8,15 @@ import (
 	"fmt"
 )
 
+// Returned when one attempts to get the contents of a NOBITS section such as
+// .bss. The number is the section index.
+type UninitializedDataSectionError uint16
+
+func (e UninitializedDataSectionError) Error() string {
+	return fmt.Sprintf("The section at index %d is for uninitialized memory "+
+		"and doesn't have contents", uint16(e))
+}
+
 // This is a 32- or 64-bit agnostic way of reading an ELF file. If needed, one
 // can use type assertions to convert instances of this interface into either
 // instances of *ELF64File or *ELF32File.
@@ -25,7 +34,9 @@ type ELFFile interface {
 	GetSegmentCount() uint16
 	// Returns the name of the section at the given index.
 	GetSectionName(index uint16) (string, error)
-	// Returns the content of the section at the given index.
+	// Returns the content of the section at the given index. Returns an
+	// UninitializedDataSectionError if one attempts to get contents for a
+	// NOBITS section such as .bss.
 	GetSectionContent(index uint16) ([]byte, error)
 	// Returns the content of the segment at the given index.
 	GetSegmentContent(index uint16) ([]byte, error)

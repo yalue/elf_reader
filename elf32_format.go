@@ -458,8 +458,7 @@ func (f *ELF32File) GetSectionContent(sectionIndex uint16) ([]byte, error) {
 	}
 	sectionHeader := f.Sections[sectionIndex]
 	if sectionHeader.Type == UninitializedSection {
-		return nil, fmt.Errorf("The section at index %d is for "+
-			"uninitialized memory and doesn't have contents", sectionIndex)
+		return nil, UninitializedDataSectionError(sectionIndex)
 	}
 	start := sectionHeader.FileOffset
 	if (int(start) < 0) || (int(start) > len(f.Raw)) {
